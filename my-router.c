@@ -8,3 +8,25 @@
 #include <stdbool.h>
 #include <sys/wait.h>	/* for the waitpid() system call */
 #include <signal.h>	/* signal name macros, and the kill() prototype */
+
+int start_socket(int port)
+{
+	int sockfd;
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (sockfd < 0) 
+		error("ERROR opening socket");
+
+	struct sockaddr_in addr;
+	bzero((char *) &addr, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port = htons(port);
+	if (bind(sockfd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
+		error("error on binding");
+
+	return sockfd;
+
+}
+
+int main(int argc, char *argv[])
+{}
