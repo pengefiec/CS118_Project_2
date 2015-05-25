@@ -9,7 +9,7 @@
 #include <sys/wait.h>	/* for the waitpid() system call */
 #include <signal.h>	/* signal name macros, and the kill() prototype */
 
-const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
+const int ports[6] = {10000, 10001, 10002, 10003, 10005, 10004};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 
 typedef enum {CONTROL, DATA} packet_type;
@@ -59,10 +59,23 @@ Router start_router(int port, char id)
 			r.table[i].cost = 0;
 		else
 			r.table[i].cost = 9999;
-		
 		r.table[i].outgoing_port = port;
 		r.table[i].destination_port = ports[i];
 	}
+
+	// Open initial topology file
+	FILE* f;
+	char line[512];
+
+	f = fopen("topology.txt", "rb");
+	if (f == NULL)
+		error("file open error");
+
+	while (fgets(line, sizeof(line), f))
+	{
+	}
+
+	fclose(f);
 
 
 	// Start socket
@@ -146,9 +159,9 @@ int main(int argc, char *argv[])
 	remote_addr.sin_family = AF_INET;
 	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-	remote_addr.sin_port = htons(10005);
+	remote_addr.sin_port = htons(10003);
 
-	// Should send a packet from Router B to router F
+	// Should send a packet from Router B to router D
 	if (sendto(routers[1].socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
 	 	error("error in sending message");
 	else
