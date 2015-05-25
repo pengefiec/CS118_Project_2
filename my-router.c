@@ -55,7 +55,11 @@ Router start_router(int port, char id)
 	for (i = 0; i < 6; i++)
 	{
 		r.table[i].destination = ids[i];
-		r.table[i].cost = 9999;
+		if (ids[i] == id)
+			r.table[i].cost = 0;
+		else
+			r.table[i].cost = 9999;
+		
 		r.table[i].outgoing_port = port;
 		r.table[i].destination_port = ports[i];
 	}
