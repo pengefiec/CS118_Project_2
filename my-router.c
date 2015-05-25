@@ -9,7 +9,7 @@
 #include <sys/wait.h>	/* for the waitpid() system call */
 #include <signal.h>	/* signal name macros, and the kill() prototype */
 
-const int ports[6] = {10001, 10000, 10002, 10003, 10004, 10005};
+const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
 
 void error(char *msg)
 {
@@ -30,7 +30,7 @@ int start_router(int port)
 	signal(SIGPIPE, SIG_IGN);
 	int sockfd;
 	char buf[1024] = "hi";
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd < 0) 
 		error("ERROR opening socket");
 
@@ -46,25 +46,24 @@ int start_router(int port)
 	printf("Router waiting on port %d\n", port);
 
 	// Send message test
-	if (port == 10001)
-	{
-		struct packet p;
-		p.source_port = port;
-		p.dest_port = 10000;
-		p.msg = "hello test";
+	// if (port == 10001)
+	// {
+	// 	struct packet p;
+	// 	p.source_port = port;
+	// 	p.dest_port = 10000;
+	// 	p.msg = "hello test";
 
-		struct sockaddr_in remote_addr;
-		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
-		remote_addr.sin_family = AF_INET;
-		remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		remote_addr.sin_port = htons(10000);
+	// 	struct sockaddr_in remote_addr;
+	// 	socklen_t remote_addr_len = sizeof(struct sockaddr_in);
+	// 	remote_addr.sin_family = AF_INET;
+	// 	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	// 	remote_addr.sin_port = htons(10000);
 
-		if (sendto(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
-			error("error in sending message");
-		else
-			printf("msg sent successfully");
-		return 0;
-	}
+	// 	if (sendto(sockfd, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
+	// 		error("error in sending message");
+	// 	else
+	// 		printf("Message: '%s' sent successfully!\n", p.msg);
+	// }
 
 
 	// Listening to receive message
@@ -79,7 +78,7 @@ int start_router(int port)
 		if (recvlen > 0)
 		{
 			buf[recvlen] = 0;
-			printf("msg received: %s\n", buf);
+			printf("Message received!: %s\n", received_packet->msg);
 		}
 	}
 
@@ -89,6 +88,16 @@ int main(int argc, char *argv[])
 {
 	int i;
 
-	// Create two routers for test
-	start_router(10001);
+	//Create two routers for test
+	for (i = 0; i < 2; i++) 
+	{
+		int pid = fork();
+		if (pid < 0)
+			error("forking error");
+		else if (pid == 0)
+		{
+			start_router(ports[i]);
+		}
+	}
+	//start_router(10000);
 }
