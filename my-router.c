@@ -12,18 +12,20 @@
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 
-typedef enum{CONTROL, DATA} packet_type;
+typedef enum {CONTROL, DATA} packet_type;
 
-void error(char *msg)
-{
-    perror(msg);
-    exit(1);
-}
-
-struct Packet
+typedef struct
 {
 	packet_type type;
 	char* msg;
+} Packet;
+
+struct routing_table_row
+{
+	char destination;
+	int cost;
+	int outgoing_port;
+	int destination_port;
 };
 
 typedef struct
@@ -31,18 +33,35 @@ typedef struct
 	int port;
 	int socket;
 	char id;
+	struct routing_table_row table[6];
 } Router;
+
+void error(char *msg)
+{
+    perror(msg);
+    exit(1);
+}
 
 
 // Constructs a router and its socket
 Router start_router(int port, char id)
 {
-
 	Router r;
 	r.port = port;
 	r.id = id;
 
-	signal(SIGPIPE, SIG_IGN);
+	// Initialize routing table
+	int i;
+	for (i = 0; i < 6; i++)
+	{
+		r.table[i].destination = ids[i];
+		r.table[i].cost = 9999;
+		r.table[i].outgoing_port = port;
+		r.table[i].destination_port = ports[i];
+	}
+
+
+	// Start socket
 	int sockfd;
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -60,7 +79,6 @@ Router start_router(int port, char id)
 	r.socket = sockfd;
 
 	return r;
-
 }
 
 // Sets a router to start listening
@@ -72,9 +90,9 @@ void router_receive(Router r)
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
-		struct Packet* received_packet = (struct Packet*)malloc(sizeof(struct Packet));
+		Packet* received_packet = (Packet*)malloc(sizeof(Packet));
 	
-		int recvlen = recvfrom(r.socket, received_packet, sizeof(struct Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
+		int recvlen = recvfrom(r.socket, received_packet, sizeof(Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
 		if (recvlen > 0)
 		{
 			printf("Router %c received message: '%s'\n\n", r.id, received_packet->msg);
@@ -115,7 +133,7 @@ int main(int argc, char *argv[])
 	// Send test message
 	sleep(4);
 
-	struct Packet p;
+	Packet p;
 	p.type = DATA;
 	p.msg = "test message";
 
@@ -123,7 +141,6 @@ int main(int argc, char *argv[])
 	socklen_t remote_addr_len = sizeof(struct sockaddr_in);
 	remote_addr.sin_family = AF_INET;
 	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	p.msg = "test message 2";
 
 	remote_addr.sin_port = htons(10005);
 
