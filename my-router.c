@@ -88,8 +88,8 @@ int main(int argc, char *argv[])
 {
 	int i;
 
-	//Create two routers for test
-	for (i = 0; i < 2; i++) 
+	//Create six routers with ports
+	for (i = 0; i < 6; i++) 
 	{
 		int pid = fork();
 		if (pid < 0)
