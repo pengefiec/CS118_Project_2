@@ -10,6 +10,9 @@
 #include <signal.h>	/* signal name macros, and the kill() prototype */
 
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
+const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
+
+typedef enum{CONTROL, DATA} packet_type;
 
 void error(char *msg)
 {
@@ -17,20 +20,32 @@ void error(char *msg)
     exit(1);
 }
 
-struct packet
+struct Packet
 {
-	int source_port;
-	int dest_port;
+	packet_type type;
 	char* msg;
 };
 
-
-int start_router(int port)
+typedef struct
 {
+	int port;
+	int socket;
+	char id;
+} Router;
+
+
+// Constructs a router and its socket
+Router start_router(int port, char id)
+{
+
+	Router r;
+	r.port = port;
+	r.id = id;
+
 	signal(SIGPIPE, SIG_IGN);
 	int sockfd;
-	char buf[1024] = "hi";
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
 	if (sockfd < 0) 
 		error("ERROR opening socket");
 
@@ -42,62 +57,79 @@ int start_router(int port)
 	if (bind(sockfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) < 0)
 		error("error on binding");
 
+	r.socket = sockfd;
 
-	printf("Router waiting on port %d\n", port);
+	return r;
 
-	// Send message test
-	// if (port == 10001)
-	// {
-	// 	struct packet p;
-	// 	p.source_port = port;
-	// 	p.dest_port = 10000;
-	// 	p.msg = "hello test";
+}
 
-	// 	struct sockaddr_in remote_addr;
-	// 	socklen_t remote_addr_len = sizeof(struct sockaddr_in);
-	// 	remote_addr.sin_family = AF_INET;
-	// 	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	// 	remote_addr.sin_port = htons(10000);
-
-	// 	if (sendto(sockfd, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
-	// 		error("error in sending message");
-	// 	else
-	// 		printf("Message: '%s' sent successfully!\n", p.msg);
-	// }
-
-
-	// Listening to receive message
+// Sets a router to start listening
+void router_receive(Router r)
+{
+	printf("Router %c waiting on port %d\n", r.id, r.port);
 	while (true)
 	{
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
-		struct packet* received_packet = (struct packet*)malloc(sizeof(struct packet));
+		struct Packet* received_packet = (struct Packet*)malloc(sizeof(struct Packet));
 	
-		int recvlen = recvfrom(sockfd, received_packet, sizeof(struct packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
+		int recvlen = recvfrom(r.socket, received_packet, sizeof(struct Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
 		if (recvlen > 0)
 		{
-			buf[recvlen] = 0;
-			printf("Message received!: %s\n", received_packet->msg);
+			printf("Router %c received message: '%s'\n\n", r.id, received_packet->msg);
 		}
 	}
-
 }
+
 
 int main(int argc, char *argv[])
 {
 	int i;
 
+	Router routers[6];
+
 	//Create six routers with ports
 	for (i = 0; i < 6; i++) 
 	{
+		routers[i] = start_router(ports[i], ids[i]);
+		printf("Router %c created with port %d\n", ids[i], ports[i]);
+	}
+
+	printf("Begin router listening\n");
+	printf("-------------------------\n");
+
+	// Start router listening
+	for (i = 0; i < 6; i++)
+	{
 		int pid = fork();
 		if (pid < 0)
-			error("forking error");
+			error("fork error");
 		else if (pid == 0)
 		{
-			start_router(ports[i]);
+			router_receive(routers[i]);
 		}
 	}
-	//start_router(10000);
+
+
+	// Send test message
+	sleep(4);
+
+	struct Packet p;
+	p.type = DATA;
+	p.msg = "test message";
+
+	struct sockaddr_in remote_addr;
+	socklen_t remote_addr_len = sizeof(struct sockaddr_in);
+	remote_addr.sin_family = AF_INET;
+	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	p.msg = "test message 2";
+
+	remote_addr.sin_port = htons(10005);
+
+	// Should send a packet from Router B to router F
+	if (sendto(routers[1].socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
+	 	error("error in sending message");
+	else
+	 	printf("Router %c sent message '%s' successfully\n", routers[1].id, p.msg);
 }
