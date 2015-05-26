@@ -197,7 +197,7 @@ void router_listen(Router r)
 				 	error("error in sending message");
 				else
 				{
-					
+
 				}
 			}
 		}
@@ -254,20 +254,6 @@ int main(int argc, char *argv[])
 			router_listen(routers[i]);
 	}
 
-
-	// Send test message
-	sleep(4);
-
-	Packet p;
-	p.type = DATA;
-	p.msg = "test message";
-
-	struct sockaddr_in remote_addr;
-	socklen_t remote_addr_len = sizeof(struct sockaddr_in);
-	remote_addr.sin_family = AF_INET;
-	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-	remote_addr.sin_port = htons(10003);
 
 	while(true) {}
 }
