@@ -16,6 +16,10 @@ typedef enum {CONTROL, DATA} packet_type;
 
 typedef struct
 {
+	int outgoing_port;
+	int destination_port;
+	int outgoing_id;
+	int destination_id;
 	packet_type type;
 	char* msg;
 } Packet;
@@ -23,6 +27,7 @@ typedef struct
 struct routing_table_row
 {
 	char destination;
+	bool neighbor;
 	int cost;
 	int outgoing_port;
 	int destination_port;
@@ -59,6 +64,7 @@ Router start_router(int port, char id)
 			r.table[i].cost = 0;
 		else
 			r.table[i].cost = 9999;
+		r.table[i].neighbor = false;
 		r.table[i].outgoing_port = port;
 		r.table[i].destination_port = ports[i];
 	}
@@ -71,9 +77,67 @@ Router start_router(int port, char id)
 	if (f == NULL)
 		error("file open error");
 
+	char* pch;
+	pch = "";
+
+	// Parse the file and update routing table accordingly
 	while (fgets(line, sizeof(line), f))
 	{
+		pch = strtok(line, ",");
+		if (line[0] == id)
+		{
+			pch = strtok(NULL, ",");
+			if (strcmp(pch, "A") == 0) {
+				pch = strtok(NULL, ",");
+				r.table[0].destination_port = atoi(pch);
+				pch = strtok(NULL, ",");
+				r.table[0].cost = atoi(pch);
+				r.table[0].neighbor = true;
+			}
+			else if (strcmp(pch, "B") == 0) {
+				pch = strtok(NULL, ",");
+				r.table[1].destination_port = atoi(pch);
+				pch = strtok(NULL, ",");
+				r.table[1].cost = atoi(pch);
+				r.table[1].neighbor = true;
+			}
+			else if (strcmp(pch, "C") == 0) {
+				pch = strtok(NULL, ",");
+				r.table[2].destination_port = atoi(pch);
+				pch = strtok(NULL, ",");
+				r.table[2].cost = atoi(pch);
+				r.table[2].neighbor = true;
+			}
+			else if (strcmp(pch, "D") == 0) {
+				pch = strtok(NULL, ",");
+				r.table[3].destination_port = atoi(pch);
+				pch = strtok(NULL, ",");
+				r.table[3].cost = atoi(pch);
+				r.table[3].neighbor = true;
+			}
+			else if (strcmp(pch, "E") == 0) {
+				pch = strtok(NULL, ",");
+				r.table[4].destination_port = atoi(pch);
+				pch = strtok(NULL, ",");
+				r.table[4].cost = atoi(pch);
+				r.table[4].neighbor = true;
+			}
+			else if (strcmp(pch, "F") == 0) {
+				pch = strtok(NULL, ",");
+				r.table[5].destination_port = atoi(pch);
+				pch = strtok(NULL, ",");
+				r.table[5].cost = atoi(pch);
+				r.table[5].neighbor = true;
+			}
+		}
 	}
+
+	printf("%c, %i, %i\n", r.table[0].destination, r.table[0].destination_port, r.table[0].cost);
+	printf("%c, %i, %i\n", r.table[1].destination, r.table[1].destination_port, r.table[1].cost);
+	printf("%c, %i, %i\n", r.table[2].destination, r.table[2].destination_port, r.table[2].cost);
+	printf("%c, %i, %i\n", r.table[3].destination, r.table[3].destination_port, r.table[3].cost);
+	printf("%c, %i, %i\n", r.table[4].destination, r.table[4].destination_port, r.table[4].cost);
+	printf("%c, %i, %i\n", r.table[5].destination, r.table[5].destination_port, r.table[5].cost);
 
 	fclose(f);
 
@@ -104,6 +168,7 @@ void router_receive(Router r)
 	printf("Router %c waiting on port %d\n", r.id, r.port);
 	while (true)
 	{
+
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
@@ -128,7 +193,6 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 6; i++) 
 	{
 		routers[i] = start_router(ports[i], ids[i]);
-		printf("Router %c created with port %d\n", ids[i], ports[i]);
 	}
 
 	printf("Begin router listening\n");
