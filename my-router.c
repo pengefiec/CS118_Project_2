@@ -14,16 +14,6 @@ const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 
 typedef enum {CONTROL, DATA} packet_type;
 
-typedef struct
-{
-	int outgoing_port;
-	int destination_port;
-	int outgoing_id;
-	int destination_id;
-	packet_type type;
-	char* msg;
-} Packet;
-
 struct routing_table_row
 {
 	char destination;
@@ -33,13 +23,27 @@ struct routing_table_row
 	int destination_port;
 };
 
+typedef struct routing_table_row routing_table[6];
+
 typedef struct
 {
 	int port;
 	int socket;
 	char id;
-	struct routing_table_row table[6];
+	routing_table table;
 } Router;
+
+typedef struct
+{
+	int outgoing_port;
+	int destination_port;
+	int outgoing_id;
+	int destination_id;
+	packet_type type;
+	char* msg;
+	routing_table dv;
+} Packet;
+
 
 void error(char *msg)
 {
@@ -69,6 +73,8 @@ Router start_router(int port, char id)
 		r.table[i].destination_port = ports[i];
 	}
 
+	printf("Router %c created with port %d\n", id, port);
+
 	// Open initial topology file
 	FILE* f;
 	char line[512];
@@ -80,7 +86,7 @@ Router start_router(int port, char id)
 	char* pch;
 	pch = "";
 
-	// Parse the file and update routing table accordingly
+	// Parse the file and initialize routing table accordingly
 	while (fgets(line, sizeof(line), f))
 	{
 		pch = strtok(line, ",");
@@ -162,13 +168,44 @@ Router start_router(int port, char id)
 	return r;
 }
 
-// Sets a router to start listening
-void router_receive(Router r)
+// Sets a router to start listening (send DV to neighbors and receive messages)
+void router_listen(Router r)
 {
 	printf("Router %c waiting on port %d\n", r.id, r.port);
 	while (true)
 	{
+		// Send DV to neighbors
+		int i;
+		for (i = 0; i < 6; i++)
+		{
+			if(r.table[i].neighbor)
+			{
+				Packet p;
+				p.type = CONTROL;
+				p.outgoing_port = r.port;
+				p.destination_port = r.table[i].destination_port;
+				p.outgoing_id = r.id;
+				p.destination_id = r.table[i].destination;
+				*p.dv = *r.table;
+				struct sockaddr_in remote_addr;
+				socklen_t remote_addr_len = sizeof(struct sockaddr_in);
+				remote_addr.sin_family = AF_INET;
+				remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+				remote_addr.sin_port = htons(p.destination_port);
 
+				if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
+				 	error("error in sending message");
+				else
+				{
+					
+				}
+			}
+		}
+		sleep(5);
+
+
+
+		// Receive messages
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
@@ -177,7 +214,16 @@ void router_receive(Router r)
 		int recvlen = recvfrom(r.socket, received_packet, sizeof(Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
 		if (recvlen > 0)
 		{
-			printf("Router %c received message: '%s'\n\n", r.id, received_packet->msg);
+			// Received control packet
+			if (received_packet->type == CONTROL)
+			{
+
+			}
+			// Received data packet
+			else
+			{
+
+			}
 		}
 	}
 }
@@ -205,9 +251,7 @@ int main(int argc, char *argv[])
 		if (pid < 0)
 			error("fork error");
 		else if (pid == 0)
-		{
-			router_receive(routers[i]);
-		}
+			router_listen(routers[i]);
 	}
 
 
@@ -225,9 +269,5 @@ int main(int argc, char *argv[])
 
 	remote_addr.sin_port = htons(10003);
 
-	// Should send a packet from Router B to router D
-	if (sendto(routers[1].socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
-	 	error("error in sending message");
-	else
-	 	printf("Router %c sent message '%s' successfully\n", routers[1].id, p.msg);
+	while(true) {}
 }
