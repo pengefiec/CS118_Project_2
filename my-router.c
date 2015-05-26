@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <sys/wait.h>	/* for the waitpid() system call */
 #include <signal.h>	/* signal name macros, and the kill() prototype */
+#include <time.h>
 
 const int ports[6] = {10000, 10001, 10002, 10003, 10005, 10004};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
@@ -30,6 +31,7 @@ typedef struct
 	int port;
 	int socket;
 	char id;
+	int index;
 	routing_table table;
 } Router;
 
@@ -39,6 +41,7 @@ typedef struct
 	int destination_port;
 	int outgoing_id;
 	int destination_id;
+	int index;
 	packet_type type;
 	char* msg;
 	routing_table dv;
@@ -53,11 +56,12 @@ void error(char *msg)
 
 
 // Constructs a router and its socket
-Router start_router(int port, char id)
+Router start_router(int port, char id, int index)
 {
 	Router r;
 	r.port = port;
 	r.id = id;
+	r.index = index;
 
 	// Initialize routing table
 	int i;
@@ -84,7 +88,6 @@ Router start_router(int port, char id)
 		error("file open error");
 
 	char* pch;
-	pch = "";
 
 	// Parse the file and initialize routing table accordingly
 	while (fgets(line, sizeof(line), f))
@@ -138,6 +141,7 @@ Router start_router(int port, char id)
 		}
 	}
 
+	// Print router's initial routing table given from the file
 	printf("%c, %i, %i\n", r.table[0].destination, r.table[0].destination_port, r.table[0].cost);
 	printf("%c, %i, %i\n", r.table[1].destination, r.table[1].destination_port, r.table[1].cost);
 	printf("%c, %i, %i\n", r.table[2].destination, r.table[2].destination_port, r.table[2].cost);
@@ -168,12 +172,23 @@ Router start_router(int port, char id)
 	return r;
 }
 
-// Sets a router to start listening (send DV to neighbors and receive messages)
-void router_listen(Router r)
+// Sets a router to start sending their DVs to their neighbors every 5 seconds
+void router_send_DV(Router r)
 {
-	printf("Router %c waiting on port %d\n", r.id, r.port);
 	while (true)
 	{
+		// if (r.id == 'E')
+		// {
+		// 	printf("Router %c\n", r.id);
+		// 	printf("%c, %i, %i\n", r.table[0].destination, r.table[0].destination_port, r.table[0].cost);
+		// 	printf("%c, %i, %i\n", r.table[1].destination, r.table[1].destination_port, r.table[1].cost);
+		// 	printf("%c, %i, %i\n", r.table[2].destination, r.table[2].destination_port, r.table[2].cost);
+		// 	printf("%c, %i, %i\n", r.table[3].destination, r.table[3].destination_port, r.table[3].cost);
+		// 	printf("%c, %i, %i\n", r.table[4].destination, r.table[4].destination_port, r.table[4].cost);
+		// 	printf("%c, %i, %i\n\n", r.table[5].destination, r.table[5].destination_port, r.table[5].cost);
+		// }
+
+
 		// Send DV to neighbors
 		int i;
 		for (i = 0; i < 6; i++)
@@ -185,8 +200,12 @@ void router_listen(Router r)
 				p.outgoing_port = r.port;
 				p.destination_port = r.table[i].destination_port;
 				p.outgoing_id = r.id;
+				p.index = r.index;
 				p.destination_id = r.table[i].destination;
-				*p.dv = *r.table;
+				int j;
+				for (j=0; j<6; j++)
+					p.dv[j] = r.table[j];
+
 				struct sockaddr_in remote_addr;
 				socklen_t remote_addr_len = sizeof(struct sockaddr_in);
 				remote_addr.sin_family = AF_INET;
@@ -203,21 +222,33 @@ void router_listen(Router r)
 		}
 		sleep(5);
 
+	}
+}
 
-
-		// Receive messages
+// Sets routers to receive messages
+void router_receive(Router r)
+{
+	printf("Router %c waiting on port %d\n", r.id, r.port);
+	while (true) {
+		int i;
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
 		Packet* received_packet = (Packet*)malloc(sizeof(Packet));
-	
+
 		int recvlen = recvfrom(r.socket, received_packet, sizeof(Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
 		if (recvlen > 0)
 		{
 			// Received control packet
 			if (received_packet->type == CONTROL)
 			{
-
+				for (i = 0; i < 6; i++)
+				{
+					int index = received_packet->index;
+		
+					if (r.table[i].cost > received_packet->dv[i].cost + r.table[index].cost && received_packet->dv[i].cost > 0)
+						r.table[i].cost = received_packet->dv[i].cost + r.table[index].cost;
+				}
 			}
 			// Received data packet
 			else
@@ -238,21 +269,32 @@ int main(int argc, char *argv[])
 	//Create six routers with ports
 	for (i = 0; i < 6; i++) 
 	{
-		routers[i] = start_router(ports[i], ids[i]);
+		routers[i] = start_router(ports[i], ids[i], i);
 	}
 
-	printf("Begin router listening\n");
+	printf("\nBegin router listening\n");
 	printf("-------------------------\n");
 
-	// Start router listening
+	// Start routers to receive messages
 	for (i = 0; i < 6; i++)
 	{
 		int pid = fork();
 		if (pid < 0)
 			error("fork error");
 		else if (pid == 0)
-			router_listen(routers[i]);
+			router_receive(routers[i]);
 	}
+
+	// Start routers to send DVs
+	for (i = 0; i < 6; i++)
+	{
+		int pid = fork();
+		if (pid < 0)
+			error("fork error");
+		else if (pid == 0)
+			router_send_DV(routers[i]);
+	}
+
 
 
 	while(true) {}
