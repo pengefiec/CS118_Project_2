@@ -13,6 +13,9 @@
 const int ports[6] = {10000, 10001, 10002, 10003, 10005, 10004};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 
+int count = 0;
+time_t now;
+
 typedef enum {CONTROL, DATA} packet_type;
 
 struct routing_table_row
@@ -175,26 +178,17 @@ Router start_router(int port, char id, int index)
 // Sets a router to start sending their DVs to their neighbors every 5 seconds
 void router_send_DV(Router r)
 {
+	printf("Router %c waiting on port %d\n", r.id, r.port);
 	while (true)
 	{
-		// if (r.id == 'E')
-		// {
-		// 	printf("Router %c\n", r.id);
-		// 	printf("%c, %i, %i\n", r.table[0].destination, r.table[0].destination_port, r.table[0].cost);
-		// 	printf("%c, %i, %i\n", r.table[1].destination, r.table[1].destination_port, r.table[1].cost);
-		// 	printf("%c, %i, %i\n", r.table[2].destination, r.table[2].destination_port, r.table[2].cost);
-		// 	printf("%c, %i, %i\n", r.table[3].destination, r.table[3].destination_port, r.table[3].cost);
-		// 	printf("%c, %i, %i\n", r.table[4].destination, r.table[4].destination_port, r.table[4].cost);
-		// 	printf("%c, %i, %i\n\n", r.table[5].destination, r.table[5].destination_port, r.table[5].cost);
-		// }
-
-
-		// Send DV to neighbors
+		// Send DV to neighbors only
 		int i;
+
 		for (i = 0; i < 6; i++)
 		{
 			if(r.table[i].neighbor)
 			{
+				// Create a control packet of the router's DV and send it to neighbors
 				Packet p;
 				p.type = CONTROL;
 				p.outgoing_port = r.port;
@@ -222,15 +216,7 @@ void router_send_DV(Router r)
 		}
 		sleep(5);
 
-	}
-}
 
-// Sets routers to receive messages
-void router_receive(Router r)
-{
-	printf("Router %c waiting on port %d\n", r.id, r.port);
-	while (true) {
-		int i;
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
@@ -242,22 +228,60 @@ void router_receive(Router r)
 			// Received control packet
 			if (received_packet->type == CONTROL)
 			{
+				bool updated = false;
+				routing_table old;
+				// Iterate through each DV entry and check for cheaper cost and update
 				for (i = 0; i < 6; i++)
 				{
+					old[i] = r.table[i];
 					int index = received_packet->index;
-		
 					if (r.table[i].cost > received_packet->dv[i].cost + r.table[index].cost && received_packet->dv[i].cost > 0)
+					{
 						r.table[i].cost = received_packet->dv[i].cost + r.table[index].cost;
+						updated = true;
+					}
 				}
-			}
-			// Received data packet
-			else
-			{
 
+				// Only print to file if routing table is updated
+				if (updated) {
+					// Print old DV
+					int j;
+					char filename[256] = "routing-output";
+					char id = r.id;
+					char idstring[2] = {id, '\0'};
+					strcat(filename, idstring);
+					strcat(filename, ".txt");
+					FILE* output = fopen(filename, "a+");
+					time_t now;
+					struct tm *tm;
+					now = time(0);
+					tm = localtime(&now);
+
+					// Timestamp
+					fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+							 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+							   tm->tm_hour, tm->tm_min, tm->tm_sec);
+
+					fprintf(output, "Router %c received DV update from Router %c\n", r.id, received_packet->outgoing_id);
+					fprintf(output, "Old routing table:\n");
+					for (j = 0; j < 6; j++)
+						fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
+
+					
+					// Print routing table updates to file
+
+					fprintf(output, "\nNew routing table:\n");
+					for (j = 0; j < 6; j++)
+						fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
+					fprintf(output, "\n");
+
+					fclose(output);
+				}
 			}
 		}
 	}
 }
+
 
 
 int main(int argc, char *argv[])
@@ -273,19 +297,11 @@ int main(int argc, char *argv[])
 	}
 
 	printf("\nBegin router listening\n");
+	printf("Routing tables should converge in about 30 seconds\n");
 	printf("-------------------------\n");
 
-	// Start routers to receive messages
-	for (i = 0; i < 6; i++)
-	{
-		int pid = fork();
-		if (pid < 0)
-			error("fork error");
-		else if (pid == 0)
-			router_receive(routers[i]);
-	}
 
-	// Start routers to send DVs
+	// Start routers to send and receive DVs
 	for (i = 0; i < 6; i++)
 	{
 		int pid = fork();
@@ -296,6 +312,6 @@ int main(int argc, char *argv[])
 	}
 
 
-
-	while(true) {}
+	while(true) {
+	}
 }
