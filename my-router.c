@@ -13,8 +13,6 @@
 const int ports[6] = {10000, 10001, 10002, 10003, 10005, 10004};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 
-int count = 0;
-time_t now;
 
 typedef enum {CONTROL, DATA} packet_type;
 
@@ -44,10 +42,12 @@ typedef struct
 	int destination_port;
 	int outgoing_id;
 	int destination_id;
-	int index;
+	int index;	// 0 for A, 1 for B etc.
+
 	packet_type type;
-	char* msg;
-	routing_table dv;
+
+	char* msg;		  // For data
+	routing_table dv; // For DV updates
 } Packet;
 
 
@@ -216,7 +216,7 @@ void router_send_DV(Router r)
 		}
 		sleep(5);
 
-
+		// Receive DVs
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(remote_addr);
 
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 		routers[i] = start_router(ports[i], ids[i], i);
 	}
 
-	printf("\nBegin router listening\n");
+	printf("\nBegin router DV exchanging\n");
 	printf("Routing tables should converge in about 30 seconds\n");
 	printf("-------------------------\n");
 
