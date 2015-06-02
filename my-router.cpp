@@ -69,8 +69,9 @@ void print_routing_table(const Router &r){
 	printf("%c, %i, %i\n", r.table[4].destination, r.table[4].destination_port, r.table[4].cost);
 	printf("%c, %i, %i\n", r.table[5].destination, r.table[5].destination_port, r.table[5].cost);
 }
-
-// Constructs a router and its socket
+/*
+Constructs a router and its socket
+*/
 Router start_router(int port, char id, int index)
 {
 	Router r;
@@ -274,6 +275,9 @@ void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * 
 	}
 	// Only print to file if routing table is updated
 }
+/*
+periodically send up date info, using in a separated thread.
+*/
 void period_update(const Router& r){
 	while(1){
 		send_cm(r);
@@ -284,12 +288,16 @@ void period_update(const Router& r){
 
 /*
 compile using g++ -std=c++11 my-router.cpp -pthread -o myrouter
+
+run with ./my router [router index]
+
+each router should be run in a separated terminal.
 */
 int main(int argc, char *argv[])
 {
 	Router routers[6];
 	if (argc < 2) {
-        fprintf(stderr,"ERROR, no port provided\n");
+        fprintf(stderr,"ERROR, no router index provided\n");
         exit(1);
     }
     int index = atoi(argv[1]);
