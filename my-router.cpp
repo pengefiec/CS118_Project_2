@@ -11,9 +11,11 @@
 #include <time.h>
 #include <unistd.h>
 #include <thread>
-
+#include <vector>
+#include <algorithm>
+using namespace std;
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
-const char ids[6] = {'A', 'B', 'C', 'D', 'F', 'E'};
+const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 
 
 typedef enum {CONTROL, DATA} packet_type;
@@ -174,13 +176,27 @@ Router start_router(int port, char id, int index)
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	addr.sin_port = htons(port);
-	if (bind(sockfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) < 0)
+	if (::bind(sockfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) < 0)
 		error("error on binding");
 
 	r.socket = sockfd;
 
 	return r;
 }
+/*
+Get all routers which are reached via this router.
+*/
+vector<int> get_via_here(const Router & r, int index){
+	vector<int> via_here;
+	for(int i=0; i<6;i++){
+		char id=distance(ids, find(ids, ids + 6, r.table[i].destination));
+		if(r.table[i].destination_port==r.table[index].destination_port && id!=r.table[i].destination){
+			via_here.push_back(r.table[i].outgoing_port);
+		}
+	}
+	return via_here;
+}
+
 
 /*
 Create a control packet.
@@ -217,6 +233,12 @@ void send_cm(const Router& r)
 				remote_addr.sin_family = AF_INET;
 				remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 				remote_addr.sin_port = htons(p.destination_port);
+				//Poison reverse.
+				vector<int> via_here=get_via_here(r, i);
+				for (vector<int>::iterator it = via_here.begin() ; it != via_here.end(); ++it){
+					int x=distance(ports, find(ports, ports + 5, *it));
+					p.dv[x].cost=9999;
+				}
 				if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
 				 	error("error in sending message");
 			}
@@ -280,15 +302,13 @@ void period_update(const Router& r){
 	while(1){
 		send_cm(r);
 		printf("%s\n", "I'm sending dv");
-		std::this_thread::sleep_for (std::chrono::seconds(5));
+		this_thread::sleep_for (chrono::seconds(5));
 	}
 }
 
 /*
 Compile using g++ -std=c++11 my-router.cpp -pthread -o myrouter
-
 Run with ./my router [router index]
-
 Each router should be run in a separated terminal.
 */
 int main(int argc, char *argv[])
@@ -321,7 +341,7 @@ int main(int argc, char *argv[])
 	// Start routers to send and receive DVs
 	send_cm(r);
 
-	std:: thread t (period_update,r);
+	thread t (period_update,r);
 	t.detach();
 	printf("%s%s\n", "this is the current value", ctime(&current));
 	while(1) {
@@ -338,21 +358,3 @@ int main(int argc, char *argv[])
 	}
 	
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
