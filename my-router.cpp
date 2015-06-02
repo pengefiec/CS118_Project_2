@@ -225,73 +225,71 @@ void send_cm(const Router& r)
 /*
 Process control message.
 */
-void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * remote_addr){
+void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
 
-	// bool updated = false;
+	bool updated = false;
+	// Print old DV
 	routing_table old;
+	for(int i=0;i<6; i++){
+		old[i] = r.table[i];
+	}
 	// Iterate through each DV entry and check for cheaper cost and update
 	for (int i = 0; i < 6; i++)
 	{
-		old[i] = r.table[i];
 		int index = received_packet->index;
 		if (r.table[i].cost > received_packet->dv[i].cost + r.table[index].cost && received_packet->dv[i].cost > 0)
 		{
+			updated=true;
 			r.table[i].cost = received_packet->dv[i].cost + r.table[index].cost;
 			r.table[i].destination_port=ntohs(remote_addr->sin_port);
 			print_routing_table(r);
-			// Print old DV
-			char filename[256] = "routing-output";
-			char id = r.id;
-			char idstring[2] = {id, '\0'};
-			strcat(filename, idstring);
-			strcat(filename, ".txt");
-			FILE* output = fopen(filename, "a+");
-			time_t now;
-			struct tm *tm;
-			now = time(0);
-			tm = localtime(&now);
-
 			send_cm(r);
-			// Timestamp
-			fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+			
+		}	
+	}
+	// Only print to file if routing table is updated	
+	if(updated){
+		FILE* output = fopen(filename, "a+");
+		// Timestamp
+		time_t now;
+		struct tm *tm;
+		now = time(0);
+		tm = localtime(&now);
+
+		//Print the time stamp.
+		fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
 					 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
 					   tm->tm_hour, tm->tm_min, tm->tm_sec);
+		fprintf(output, "Router %c received DV update from Router %c\n", r.id, received_packet->outgoing_id);
+		fprintf(output, "Old routing table:\n");
+		for (int j = 0; j < 6; j++)
+			fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
 
-			fprintf(output, "Router %c received DV update from Router %c\n", r.id, received_packet->outgoing_id);
-			fprintf(output, "Old routing table:\n");
-			for (int j = 0; j < 6; j++)
-				fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
-
-			
-			// Print routing table updates to file
-
-			fprintf(output, "\nNew routing table:\n");
-			for (int j = 0; j < 6; j++)
-				fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
-			fprintf(output, "\n");
-
+		// Print routing table updates to file
+		fprintf(output, "\nNew routing table:\n");
+		for (int j = 0; j < 6; j++)
+			fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
+		fprintf(output, "\n");
 		fclose(output);
-		}
-	}
-	// Only print to file if routing table is updated
+	}	
 }
 /*
-periodically send up date info, using in a separated thread.
+Periodically send up date info, using in a separated thread.
 */
 void period_update(const Router& r){
 	while(1){
 		send_cm(r);
-		printf("%s\n", "I'm updating");
+		printf("%s\n", "I'm sending dv");
 		std::this_thread::sleep_for (std::chrono::seconds(5));
 	}
 }
 
 /*
-compile using g++ -std=c++11 my-router.cpp -pthread -o myrouter
+Compile using g++ -std=c++11 my-router.cpp -pthread -o myrouter
 
-run with ./my router [router index]
+Run with ./my router [router index]
 
-each router should be run in a separated terminal.
+Each router should be run in a separated terminal.
 */
 int main(int argc, char *argv[])
 {
@@ -307,6 +305,14 @@ int main(int argc, char *argv[])
 	struct sockaddr_in remote_addr;
 	socklen_t remote_addr_len=sizeof(remote_addr);
 	time_t current=time(NULL);
+
+	//Construct update file.
+	char filename[256] = "routing-output";
+	char idstring[2] = {id, '\0'};
+	strcat(filename, idstring);
+	strcat(filename, ".txt");
+	
+
 	printf("\nRouter Start!\n");
 	printf("Router %c waiting on port %d\n", r.id, r.port);
 	//printf("Routing tables should converge in about 30 seconds);
@@ -323,16 +329,14 @@ int main(int argc, char *argv[])
 		if (recvlen > 0)
 		{
 			if (received_packet->type == CONTROL){
-				process_cm(r, received_packet,&remote_addr);
-				//current=time(NULL);
+				process_cm(r, received_packet,&remote_addr, filename);
 			}
+			//The data packet should be processed here.
 			//else
-			//	process_dm();	
+			//	process_dm(const Router &r);	
 		}
-		
-		
-		
 	}
+	
 }
 
 
