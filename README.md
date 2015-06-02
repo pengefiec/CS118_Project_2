@@ -9,4 +9,5 @@ B. packet processing<br/>
 C. sender and receiver<br/>
 D. Topology discovery<br/><br/>
 compile using "g++ -std=c++11 my-router.cpp -pthread -o myrouter"<br/>
-run with "./myrouter 0 or 1 or 2 or 3 or 4 or 5" 
+run with "./myrouter [router index]" 
+each router should be a separated terminal.
