@@ -327,30 +327,23 @@ Process data message. Relay to another router.
 */
 void process_dm(const Router &r, const Packet *received_packet){
 
-	// if(received_packet->index == r.index){
-	// 	// print out the load
-	// 	FILE* output = fopen("msg", "a+");
-	// 	fprintf(output, "received a packet%s:\n",received_packet->msg);
-	// }
 	//Must repack it, don't know why.
 	Packet p;
 	p.type = DATA;
 	p.destination_id = received_packet->destination_id;
 	p.msg=received_packet->msg;
-	//printf("%s\n", p.msg);
-	for(int i = 0; i<6; i++){
-		if(r.table[i].destination == received_packet->destination_id){
-			struct sockaddr_in remote_addr;
-			socklen_t remote_addr_len = sizeof(struct sockaddr_in);
-			remote_addr.sin_family = AF_INET;
-			remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-			remote_addr.sin_port = htons(r.table[i].destination_port);
-			if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
-			 	error("error in sending message");
-		}
-
-	}	
-
+	//printf("%s\n", p.msg.c_str());
+	int x=distance(ids, find(ids, ids + 6, received_packet->destination_id));
+	if(x!=r.index){
+		struct sockaddr_in remote_addr;
+		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
+		remote_addr.sin_family = AF_INET;
+		remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		remote_addr.sin_port = htons(ports[x]);
+		printf("%s\n", "I'm sending data packet");
+		if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
+		 	error("error in sending message");
+	}
 }
 /*
 Get all neighbors index.
@@ -364,7 +357,9 @@ vector<int> get_all_neighbor_index(Router& r){
 }
 
 /*
-Process admin message. Output the old routing table and new routing table into a file if changes happen.
+Process admin message. Output the old routing table and new routing table into a file if changes happen,
+repack and resend this packet to the related neighbor, since the network is undirectional, we need to chage in 
+both side.
 */
 void process_admin(Router &r, const Packet *received_packet, char* filename){
 	// Get old DV
@@ -381,13 +376,27 @@ void process_admin(Router &r, const Packet *received_packet, char* filename){
 	getline(ss, token, ',');
 	string id_s=token;
 	char id=id_s.at(0);
-	int j=distance(ids, find(ids, ids + 6, id));
+	int x=distance(ids, find(ids, ids + 6, id));
 	getline(ss,token,',');
 	int new_cost=stoi(token);
-	if(neighbors[ids[j]]!=new_cost){
-		neighbors[ids[j]]=new_cost;
-		r.table[j].cost=new_cost;
+	if(neighbors[ids[x]]!=new_cost){
+		neighbors[ids[x]]=new_cost;
+		r.table[x].cost=new_cost;
 		output_routing_table(r, 'H', filename, old);
+	}
+	if(r.id!=id){
+		Packet p;
+		p.type = ADMIN;
+		p.destination_id = id;
+		string message=r.id+","+token;
+		p.msg=message;
+		struct sockaddr_in remote_addr;
+		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
+		remote_addr.sin_family = AF_INET;
+		remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		remote_addr.sin_port = htons(ports[x]);
+		if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
+		 	error("error in sending message");
 	}
 	
 }
@@ -413,7 +422,7 @@ void period_update(const Router& r){
 	while(1){
 		//check_expire(r);
 		send_cm(r);
-		printf("%s\n", "I'm updating");
+		printf("%s\n", "I'm sending update");
 		std::this_thread::sleep_for (std::chrono::seconds(5));
 	}
 }
@@ -462,15 +471,16 @@ int main(int argc, char *argv[])
 		if (recvlen > 0)
 		{
 			if (received_packet->type == CONTROL){
+				printf("I received control packet\n");
 				process_cm(r, received_packet,&remote_addr, filename);
 			}
 			else if(received_packet->type==DATA){
-				printf("%s\n", "I received data packet");
+				printf("%s%s\n", "I received data packet ",received_packet->msg.c_str());
 				process_dm(r, received_packet);
 				
 			}
 			else if(received_packet->type==ADMIN){
-				printf("%s%s\n", "I received a admin packet",received_packet->msg.c_str());
+				printf("%s%s\n", "I received a admin packet ",received_packet->msg.c_str());
 				
 				process_admin(r, received_packet, filename);
 			}

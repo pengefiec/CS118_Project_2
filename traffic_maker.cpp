@@ -74,8 +74,31 @@ void generate_traffic(Packet p, int port){
 
 	}
 }
+/*
+Output a data file send from a source router.
+*/
+void output_data_message(const Packet& p, char* filename){
+	
+	FILE* output = fopen(filename, "a+");
+	// Timestamp
+	time_t now;
+	struct tm *tm;
+	now = time(0);
+	tm = localtime(&now);
 
-void make_data_packet(char outgoing_router, char destination_router, string msg ){
+	//Print the time stamp.
+	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+				   tm->tm_hour, tm->tm_min, tm->tm_sec);
+	//Print out the header.
+	fprintf(output, "Destination port on source router: %s\n", p.destination_port);
+	fprintf(output, "Data packet send from %c\n", p.destination_id);
+	//Print out the txet phrase.
+	fprintf(output, "Payload: %s\n", p.msg.c_str());
+	fprintf(output, "\n");
+	fclose(output);
+}
+void make_data_packet(char outgoing_router, char destination_router, string msg,  char* filename){
 	// printf("%s\n%s\n",outgoing_router, destination_router);
 	Packet p;
 	p.type = DATA;
@@ -83,10 +106,12 @@ void make_data_packet(char outgoing_router, char destination_router, string msg 
 	int port;
 	for(int i = 0; i < 6; i++){
 		if(ids[i] == outgoing_router){
-			port = ports[i];	
+			port = ports[i];
+			p.destination_port=port;	
 		}
 	}
 	p.msg = msg;
+	output_data_message(p, filename);
 	generate_traffic(p, port);
 }
 
@@ -96,7 +121,8 @@ Packet make_admin_packet(char target_router, string msg){
 	int port;
 	for(int i = 0; i < 6; i++){
 		if(ids[i] == target_router){
-			port = ports[i];	
+			port = ports[i];
+			p.destination_port=port;	
 		}
 	}
 	p.msg  = msg;
@@ -106,6 +132,12 @@ Packet make_admin_packet(char target_router, string msg){
 
 int main(int argc, char *argv[])
 {
+	//Construct a output file for the host.
+	char filename[256] = "host-output";
+	char idstring[2] = {'H', '\0'};
+	strcat(filename, idstring);
+	strcat(filename, ".txt");
+
 	/* code */
 	if(argc < 2){
 		error("Please define the outgoing_router and destination_router");
@@ -121,7 +153,7 @@ int main(int argc, char *argv[])
 		char temp[500]; 
 		scanf("%s", &temp);
 		string msg = temp;
-		make_data_packet(argv[2][0], argv[3][0],msg);
+		make_data_packet(argv[2][0], argv[3][0],msg, filename);
 	}
 	if(strcmp(type, "1") == 0){
 		if(argc != 3){
