@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <string>
 #include <sstream> 
+#include <mutex>
 
 using namespace std;
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
@@ -65,6 +66,8 @@ void error(char* msg)
     perror(msg);
     exit(1);
 }
+Router r;
+mutex table_lock;
 /*
 Print the routing table.
 */
@@ -359,7 +362,7 @@ void process_dm(const Router &r, const Packet *received_packet){
 	p.msg=received_packet->msg;
 	//printf("%s\n", p.msg.c_str());
 	int x=distance(ids, find(ids, ids + 6, received_packet->destination_id));
-	if(x!=r.index){
+	if(x!=r.index&&r.table[x].cost<9999){
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
 		remote_addr.sin_family = AF_INET;
@@ -396,27 +399,27 @@ void process_admin(Router &r, const Packet *received_packet, char* filename){
 		old[i] = r.table[i];
 	}
 	istringstream ss(received_packet->msg);
-	string token;
+	string id_s;
+	string cost_s;
 
-	//char* pch;
-	// pch = strtok(message, ",");
-	// pch= strtok(NULL, ",");
-	getline(ss, token, ',');
-	string id_s=token;
+	getline(ss, id_s, ',');
+	printf("%s\n", id_s.c_str());
+	getline(ss, cost_s,',');
+	printf("%s\n", cost_s.c_str());
 	char id=id_s.at(0);
 	int x=distance(ids, find(ids, ids + 6, id));
-	getline(ss,token,',');
-	int new_cost=stoi(token);
-	if(neighbors[ids[x]]!=new_cost){
-		neighbors[ids[x]]=new_cost;
-		r.table[x].cost=new_cost;
-		output_routing_table(r, 'H', filename, old);
-	}
-	if(r.id!=id){
+	int new_cost=stoi(cost_s);
+	if(neighbors[ports[x]]!=new_cost){
+	 	neighbors[ports[x]]=new_cost;
+	 	r.table[x].cost=new_cost;
+	 	output_routing_table(r, 'H', filename, old);
+	 }
+	 printf("outgoing port is %dr.port is %d", received_packet->outgoing_port, r.port);
+	if(received_packet->outgoing_port==r.port){
 		Packet p;
 		p.type = ADMIN;
 		p.destination_id = id;
-		string message=r.id+","+token;
+		string message=string(1,r.id)+','+cost_s;
 		p.msg=message;
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
@@ -446,10 +449,15 @@ void check_expire(Router &r){
 /*
 Periodically send up date info, using in a separated thread.
 */
-void period_update(const Router& r){
+void period_update(){
 	while(1){
 		//check_expire(r);
+		table_lock.lock();
+		if(r.id=='B'){
+			print_routing_table(r);
+		}
 		send_cm(r);
+		table_lock.unlock();
 		printf("%s\n", "I'm sending update");
 		std::this_thread::sleep_for (std::chrono::seconds(5));
 	}
@@ -463,7 +471,7 @@ Each router should be run in a separated terminal.
 */
 int main(int argc, char *argv[])
 {
-	Router routers[6];
+	//Router routers[6];
 	if (argc < 2) {
         fprintf(stderr,"ERROR, no router index provided\n");
         exit(1);
@@ -471,7 +479,7 @@ int main(int argc, char *argv[])
     int index = atoi(argv[1]);
     int portno=ports[index];
    	char id=ids[index];
-	Router r = start_router(portno, id, index);
+	r = start_router(portno, id, index);
 	struct sockaddr_in remote_addr;
 	socklen_t remote_addr_len=sizeof(remote_addr);
 	time_t current=time(NULL);
@@ -491,7 +499,7 @@ int main(int argc, char *argv[])
 	// Start routers to send and receive DVs
 	send_cm(r);
 
-	std::thread t (period_update,ref(r));
+	std::thread t (period_update);
 	t.detach();
 	printf("%s%s\n", "this is the current value", ctime(&current));
 	while(1) {
@@ -499,28 +507,21 @@ int main(int argc, char *argv[])
 		if (recvlen > 0)
 		{
 			if (received_packet->type == CONTROL){
-				printf("I received control packet\n");
+				printf("I received control packet from %c\n", received_packet->outgoing_id);
 				process_cm(r, received_packet,&remote_addr, filename);
 			}
 			else if(received_packet->type==DATA){
-				printf("%s%s\n", "I received data packet ",received_packet->msg.c_str());
+				printf("%s%s\n", "I received data packet, the payload is: ",received_packet->msg.c_str());
 				process_dm(r, received_packet);
 				
 			}
 			else if(received_packet->type==ADMIN){
-				printf("%s%s\n", "I received a admin packet ",received_packet->msg.c_str());
-				
+				printf("%s%s\n", "I received a admin packet, the payload is: ",received_packet->msg.c_str());
 				process_admin(r, received_packet, filename);
 			}
 			else{
 				error("Wrong data type.");
-			}
-			// else if(received_packet->type == ADMIN){
-			// 	//process_cm(r, received_packet,&remote_addr, filename);
-			// }
-			//The data packet should be processed here.
-			//else
-			//	process_dm(const Router &r);	
+			}	
 		}
 	}
 	
