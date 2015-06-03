@@ -309,6 +309,31 @@ void output_routing_table(const Router &r, char id, char* filename, routing_tabl
 	fclose(output);
 }
 /*
+Output a data file send from a source router.
+*/
+void output_data_message(const Packet* received_packet, char* filename){
+	
+	FILE* output = fopen(filename, "a+");
+	// Timestamp
+	time_t now;
+	struct tm *tm;
+	now = time(0);
+	tm = localtime(&now);
+
+	//Print the time stamp.
+	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+				   tm->tm_hour, tm->tm_min, tm->tm_sec);
+	//Print out the header.
+	fprintf(output, "Mesage type%s\n", "DATA");
+	fprintf(output, "Outgoing port on source router: %s\n", received_packet->outgoing_port);
+	fprintf(output, "Data packet send from %c\n", received_packet->destination_id);
+	//Print out the txet phrase.
+	fprintf(output, "Payload: %s\n", received_packet->msg.c_str());
+	fprintf(output, "\n");
+	fclose(output);
+}
+/*
 Process control message. Output the old routing table and new routing table into a file if changes happen.
 */
 void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
@@ -343,6 +368,9 @@ void process_dm(const Router &r, const Packet *received_packet){
 		printf("%s\n", "I'm sending data packet");
 		if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
 		 	error("error in sending message");
+	}
+	else{
+
 	}
 }
 /*

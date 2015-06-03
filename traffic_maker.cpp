@@ -91,7 +91,8 @@ void output_data_message(const Packet& p, char* filename){
 				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
 				   tm->tm_hour, tm->tm_min, tm->tm_sec);
 	//Print out the header.
-	fprintf(output, "Destination port on source router: %s\n", p.destination_port);
+	fprintf(output, "Mesage type%s\n", "DATA");
+	fprintf(output, "Outgoing port on source router: %s\n", p.outgoing_port);
 	fprintf(output, "Data packet send from %c\n", p.destination_id);
 	//Print out the txet phrase.
 	fprintf(output, "Payload: %s\n", p.msg.c_str());
@@ -107,7 +108,7 @@ void make_data_packet(char outgoing_router, char destination_router, string msg,
 	for(int i = 0; i < 6; i++){
 		if(ids[i] == outgoing_router){
 			port = ports[i];
-			p.destination_port=port;	
+			p.outgoing_port=port;	
 		}
 	}
 	p.msg = msg;
