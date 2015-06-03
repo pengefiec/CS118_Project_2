@@ -13,12 +13,16 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
+#include <string>
+#include <sstream> 
+
 using namespace std;
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
-
-
-typedef enum {CONTROL, DATA} packet_type;
+unordered_map<int, int> neighbors;
+//ADM for administration message.
+typedef enum {CONTROL, DATA, ADMIN} packet_type;
 
 struct routing_table_row
 {
@@ -27,6 +31,7 @@ struct routing_table_row
 	int cost;
 	int outgoing_port;
 	int destination_port;
+	time_t last_update_time;
 };
 
 typedef struct routing_table_row routing_table[6];
@@ -42,15 +47,15 @@ typedef struct
 
 typedef struct
 {
-	int outgoing_port;
+	int outgoing_port;//unuseful
 	int destination_port;
-	int outgoing_id;
-	int destination_id;
+	char outgoing_id;
+	char destination_id;
 	int index;	// 0 for A, 1 for B etc.
 
 	packet_type type;
 
-	char* msg;		  // For data
+	string msg;		  // For data
 	routing_table dv; // For DV updates
 } Packet;
 
@@ -119,6 +124,7 @@ Router start_router(int port, char id, int index)
 				pch = strtok(NULL, ",");
 				r.table[0].cost = atoi(pch);
 				r.table[0].neighbor = true;
+				neighbors.insert(make_pair(r.table[0].destination_port, r.table[0].cost));
 			}
 			else if (strcmp(pch, "B") == 0) {
 				pch = strtok(NULL, ",");
@@ -126,6 +132,7 @@ Router start_router(int port, char id, int index)
 				pch = strtok(NULL, ",");
 				r.table[1].cost = atoi(pch);
 				r.table[1].neighbor = true;
+				neighbors.insert(make_pair(r.table[1].destination_port, r.table[1].cost));
 			}
 			else if (strcmp(pch, "C") == 0) {
 				pch = strtok(NULL, ",");
@@ -133,6 +140,7 @@ Router start_router(int port, char id, int index)
 				pch = strtok(NULL, ",");
 				r.table[2].cost = atoi(pch);
 				r.table[2].neighbor = true;
+				neighbors.insert(make_pair(r.table[2].destination_port, r.table[2].cost));
 			}
 			else if (strcmp(pch, "D") == 0) {
 				pch = strtok(NULL, ",");
@@ -140,6 +148,7 @@ Router start_router(int port, char id, int index)
 				pch = strtok(NULL, ",");
 				r.table[3].cost = atoi(pch);
 				r.table[3].neighbor = true;
+				neighbors.insert(make_pair(r.table[3].destination_port, r.table[3].cost));
 			}
 			else if (strcmp(pch, "E") == 0) {
 				pch = strtok(NULL, ",");
@@ -147,6 +156,7 @@ Router start_router(int port, char id, int index)
 				pch = strtok(NULL, ",");
 				r.table[4].cost = atoi(pch);
 				r.table[4].neighbor = true;
+				neighbors.insert(make_pair(r.table[4].destination_port, r.table[4].cost));
 			}
 			else if (strcmp(pch, "F") == 0) {
 				pch = strtok(NULL, ",");
@@ -154,7 +164,9 @@ Router start_router(int port, char id, int index)
 				pch = strtok(NULL, ",");
 				r.table[5].cost = atoi(pch);
 				r.table[5].neighbor = true;
+				neighbors.insert(make_pair(r.table[5].destination_port, r.table[5].cost));
 			}
+
 		}
 	}
 
@@ -184,13 +196,13 @@ Router start_router(int port, char id, int index)
 	return r;
 }
 /*
-Get all routers which are reached via this router.
+Get all routers' outgoing port which are reached via this router.
 */
 vector<int> get_via_here(const Router & r, int index){
 	vector<int> via_here;
 	for(int i=0; i<6;i++){
-		char id=distance(ids, find(ids, ids + 6, r.table[i].destination));
-		if(r.table[i].destination_port==r.table[index].destination_port && id!=r.table[i].destination){
+		int j=distance(ids, find(ids, ids + 6, r.table[i].destination));
+		if(r.table[i].destination_port==r.table[index].destination_port && j!=i){
 			via_here.push_back(r.table[i].outgoing_port);
 		}
 	}
@@ -236,7 +248,7 @@ void send_cm(const Router& r)
 				//Poison reverse.
 				vector<int> via_here=get_via_here(r, i);
 				for (vector<int>::iterator it = via_here.begin() ; it != via_here.end(); ++it){
-					int x=distance(ports, find(ports, ports + 5, *it));
+					int x=distance(ports, find(ports, ports + 6, *it));
 					p.dv[x].cost=9999;
 				}
 				if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
@@ -245,66 +257,167 @@ void send_cm(const Router& r)
 		}		
 }
 /*
-Process control message.
+Update routing table when new dv comes.
 */
-void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
-
+bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
 	bool updated = false;
-	// Print old DV
-	routing_table old;
-	for(int i=0;i<6; i++){
-		old[i] = r.table[i];
-	}
+	time_t now=time(NULL);
 	// Iterate through each DV entry and check for cheaper cost and update
 	for (int i = 0; i < 6; i++)
 	{
+		r.table[i].last_update_time=now;
 		int index = received_packet->index;
-		if (r.table[i].cost > received_packet->dv[i].cost + r.table[index].cost && received_packet->dv[i].cost > 0)
+		if (r.table[i].cost > neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
 		{
 			updated=true;
-			r.table[i].cost = received_packet->dv[i].cost + r.table[index].cost;
+			r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
 			r.table[i].destination_port=ntohs(remote_addr->sin_port);
 			print_routing_table(r);
 			send_cm(r);
 			
-		}	
+		}
+	}
+		return updated;	
+}
+
+/*
+Output routing table to a file.
+*/
+void output_routing_table(const Router &r, char id, char* filename, routing_table old){
+	
+	FILE* output = fopen(filename, "a+");
+	// Timestamp
+	time_t now;
+	struct tm *tm;
+	now = time(0);
+	tm = localtime(&now);
+
+	//Print the time stamp.
+	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+				   tm->tm_hour, tm->tm_min, tm->tm_sec);
+	fprintf(output, "Router %c received DV update from Router %c\n", r.id, id);
+	fprintf(output, "Old routing table:\n");
+	for (int j = 0; j < 6; j++)
+		fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
+
+	// Print routing table updates to file
+	fprintf(output, "\nNew routing table:\n");
+	for (int j = 0; j < 6; j++)
+		fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
+	fprintf(output, "\n");
+	fclose(output);
+}
+/*
+Process control message. Output the old routing table and new routing table into a file if changes happen.
+*/
+void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
+	// Get old DV
+	routing_table old;
+	for(int i=0;i<6; i++){
+		old[i] = r.table[i];
 	}
 	// Only print to file if routing table is updated	
-	if(updated){
-		FILE* output = fopen(filename, "a+");
-		// Timestamp
-		time_t now;
-		struct tm *tm;
-		now = time(0);
-		tm = localtime(&now);
-
-		//Print the time stamp.
-		fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
-					 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
-					   tm->tm_hour, tm->tm_min, tm->tm_sec);
-		fprintf(output, "Router %c received DV update from Router %c\n", r.id, received_packet->outgoing_id);
-		fprintf(output, "Old routing table:\n");
-		for (int j = 0; j < 6; j++)
-			fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
-
-		// Print routing table updates to file
-		fprintf(output, "\nNew routing table:\n");
-		for (int j = 0; j < 6; j++)
-			fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
-		fprintf(output, "\n");
-		fclose(output);
+	if(update_routing_table(r, received_packet, remote_addr)){
+		output_routing_table(r, received_packet->outgoing_id, filename, old);
 	}	
+}
+/*
+Process data message. Relay to another router.
+*/
+void process_dm(const Router &r, const Packet *received_packet){
+
+	// if(received_packet->index == r.index){
+	// 	// print out the load
+	// 	FILE* output = fopen("msg", "a+");
+	// 	fprintf(output, "received a packet%s:\n",received_packet->msg);
+	// }
+	//Must repack it, don't know why.
+	Packet p;
+	p.type = DATA;
+	p.destination_id = received_packet->destination_id;
+	p.msg=received_packet->msg;
+	//printf("%s\n", p.msg);
+	for(int i = 0; i<6; i++){
+		if(r.table[i].destination == received_packet->destination_id){
+			struct sockaddr_in remote_addr;
+			socklen_t remote_addr_len = sizeof(struct sockaddr_in);
+			remote_addr.sin_family = AF_INET;
+			remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+			remote_addr.sin_port = htons(r.table[i].destination_port);
+			if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
+			 	error("error in sending message");
+		}
+
+	}	
+
+}
+/*
+Get all neighbors index.
+*/
+vector<int> get_all_neighbor_index(Router& r){
+	vector<int> all_neighbor;
+	for(int i=0;i<6;i++){
+		if(r.table[i].neighbor)
+			all_neighbor.push_back(distance(ports, find(ports, ports+6, r.table[i].destination_port)));
+	}
+}
+
+/*
+Process admin message. Output the old routing table and new routing table into a file if changes happen.
+*/
+void process_admin(Router &r, const Packet *received_packet, char* filename){
+	// Get old DV
+	routing_table old;
+	for(int i=0;i<6; i++){
+		old[i] = r.table[i];
+	}
+	istringstream ss(received_packet->msg);
+	string token;
+
+	//char* pch;
+	// pch = strtok(message, ",");
+	// pch= strtok(NULL, ",");
+	getline(ss, token, ',');
+	string id_s=token;
+	char id=id_s.at(0);
+	int j=distance(ids, find(ids, ids + 6, id));
+	getline(ss,token,',');
+	int new_cost=stoi(token);
+	if(neighbors[ids[j]]!=new_cost){
+		neighbors[ids[j]]=new_cost;
+		r.table[j].cost=new_cost;
+		output_routing_table(r, 'H', filename, old);
+	}
+	
+}
+
+/*
+Check the routing table, mark the expored record.
+*/
+void check_expire(Router &r){
+	time_t now=time(NULL);
+	for(int i=0;i<6;i++){
+		double elapse=difftime(now, r.table[i].last_update_time);
+		if(elapse>15.0){
+			r.table[i].cost=9999;
+			//update_routing_table(r);
+		}
+	}
+	
 }
 /*
 Periodically send up date info, using in a separated thread.
 */
 void period_update(const Router& r){
 	while(1){
+		//check_expire(r);
 		send_cm(r);
-		printf("%s\n", "I'm sending dv");
-		this_thread::sleep_for (chrono::seconds(5));
+		printf("%s\n", "I'm updating");
+		std::this_thread::sleep_for (std::chrono::seconds(5));
 	}
 }
+
 
 /*
 Compile using g++ -std=c++11 my-router.cpp -pthread -o myrouter
@@ -341,7 +454,7 @@ int main(int argc, char *argv[])
 	// Start routers to send and receive DVs
 	send_cm(r);
 
-	thread t (period_update,r);
+	std::thread t (period_update,ref(r));
 	t.detach();
 	printf("%s%s\n", "this is the current value", ctime(&current));
 	while(1) {
@@ -351,6 +464,22 @@ int main(int argc, char *argv[])
 			if (received_packet->type == CONTROL){
 				process_cm(r, received_packet,&remote_addr, filename);
 			}
+			else if(received_packet->type==DATA){
+				printf("%s\n", "I received data packet");
+				process_dm(r, received_packet);
+				
+			}
+			else if(received_packet->type==ADMIN){
+				printf("%s%s\n", "I received a admin packet",received_packet->msg.c_str());
+				
+				process_admin(r, received_packet, filename);
+			}
+			else{
+				error("Wrong data type.");
+			}
+			// else if(received_packet->type == ADMIN){
+			// 	//process_cm(r, received_packet,&remote_addr, filename);
+			// }
 			//The data packet should be processed here.
 			//else
 			//	process_dm(const Router &r);	
