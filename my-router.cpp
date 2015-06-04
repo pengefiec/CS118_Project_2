@@ -320,11 +320,11 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 			updated=true;
 		}
 		
-		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0 
-			&& x <= index && r.table[i].state)
+		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0  && r.table[i].state)
+			
 		{	
 			int x=distance(ports, find(ports, ports + 6, r.table[i].destination_port));
-			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost )
+			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x <= index)
 			{
 
 			} 
