@@ -444,9 +444,19 @@ void check_expire(Router &r){
 	for(int i=0;i<6;i++){
 		double elapse=difftime(now, r.table[i].last_update_time);
 		if(elapse>15.0){
+			// Get old DV
+			routing_table old;
+			for(int i=0;i<6; i++){
+				old[i] = r.table[i];
+			}
 			r.table[i].cost=9999;
 			neighbors[r.table[i].destination_port]=9999;
-			//update_routing_table(r);
+			//print_routing_table(r);
+			// char filename[256] = "routing-output";
+			// char idstring[2] = {r.id, '\0'};
+			// strcat(filename, idstring);
+			// strcat(filename, ".txt");
+			// output_routing_table(r, 'X', filename, old);
 		}
 	}
 	
@@ -456,11 +466,8 @@ Periodically send up date info, using in a separated thread.
 */
 void period_update(){
 	while(1){
-		check_expire(r);
 		table_lock.lock();
-		if(r.id=='B'){
-			print_routing_table(r);
-		}
+		check_expire(r);
 		send_cm(r);
 		table_lock.unlock();
 		printf("%s\n", "I'm sending update");
@@ -490,7 +497,7 @@ int main(int argc, char *argv[])
 	char idstring[2] = {id, '\0'};
 	strcat(filename, idstring);
 	strcat(filename, ".txt");
-	
+
 	r = start_router(portno, id, index,filename);
 	struct sockaddr_in remote_addr;
 	socklen_t remote_addr_len=sizeof(remote_addr);
