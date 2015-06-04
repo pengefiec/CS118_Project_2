@@ -205,7 +205,7 @@ vector<int> get_via_here(const Router & r, int index){
 	vector<int> via_here;
 	for(int i=0; i<6;i++){
 		int j=distance(ids, find(ids, ids + 6, r.table[i].destination));
-		if(r.table[i].destination_port==r.table[index].destination_port && j!=i){
+		if(r.table[i].destination_port==r.table[index].outgoing_port && j!=i){
 			via_here.push_back(r.table[i].outgoing_port);
 		}
 	}
@@ -265,10 +265,11 @@ Update routing table when new dv comes.
 bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
 	bool updated = false;
 	time_t now=time(NULL);
+	r.table[received_packet->index].last_update_time=now;
 	// Iterate through each DV entry and check for cheaper cost and update
 	for (int i = 0; i < 6; i++)
 	{
-		r.table[i].last_update_time=now;
+		
 		int index = received_packet->index;
 		if (r.table[i].cost > neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
 		{
@@ -367,7 +368,7 @@ void process_dm(const Router &r, const Packet *received_packet, char*filename){
 		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
 		remote_addr.sin_family = AF_INET;
 		remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		remote_addr.sin_port = htons(ports[x]);
+		remote_addr.sin_port = htons(r.table[x].destination_port);
 
 		
 		if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
@@ -452,7 +453,7 @@ Periodically send up date info, using in a separated thread.
 */
 void period_update(){
 	while(1){
-		//check_expire(r);
+		check_expire(r);
 		table_lock.lock();
 		if(r.id=='B'){
 			print_routing_table(r);
