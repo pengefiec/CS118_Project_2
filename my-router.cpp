@@ -107,6 +107,9 @@ void output_routing_table(const Router &r, char id, char* filename, routing_tabl
 	fprintf(output, "\n");
 	fclose(output);
 }
+
+
+
 /*
 Constructs a router and its socket
 */
@@ -291,6 +294,37 @@ void send_cm(const Router& r)
 /*
 Update routing table when new dv comes.
 */
+// bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
+// 	bool updated = false;
+// 	time_t now=time(NULL);
+// 	r.table[received_packet->index].last_update_time=now;
+// 	// Iterate through each DV entry and check for cheaper cost and update
+// 	for (int i = 0; i < 6; i++)
+// 	{
+		
+// 		int index = received_packet->index;
+// 		int x=distance(ports, find(ports, ports + 6, r.table[i].outgoing_port));
+// 		int y=distance(ids, find(ids, ids + 6, index));
+// 		if (r.table[i].cost > neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
+// 		{
+// 			updated=true;
+// 			r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
+// 			r.table[i].destination_port=ntohs(remote_addr->sin_port);
+// 			print_routing_table(r);
+// 			send_cm(r);
+			
+// 		}
+// 		// else if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && ids[x] < ids[y] ){
+// 		// 	updated=true;
+// 		// 	r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
+// 		// 	r.table[i].destination_port=ntohs(remote_addr->sin_port);
+// 		// 	print_routing_table(r);
+// 		// 	send_cm(r);
+// 		// }
+
+// 	}
+// 		return updated;	
+// }
 bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
 	bool updated = false;
 	time_t now=time(NULL);
@@ -300,20 +334,26 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 	{
 		
 		int index = received_packet->index;
-		if (r.table[i].cost > neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
-		{
-			updated=true;
-			r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
-			r.table[i].destination_port=ntohs(remote_addr->sin_port);
-			print_routing_table(r);
-			send_cm(r);
+		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
+		{	
+			int x=distance(ports, find(ports, ports + 6, r.table[i].destination_port));
+			int y=distance(ids, find(ids, ids + 6, index));
+			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x < y )
+			{
+
+			} 
+			else{
+				updated=true;
+				r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
+				r.table[i].destination_port=ntohs(remote_addr->sin_port);
+				print_routing_table(r);
+				send_cm(r);
+			}
 			
 		}
 	}
 		return updated;	
 }
-
-
 /*
 Output a data file send from a source router.
 */
@@ -376,9 +416,7 @@ void process_dm(const Router &r, const Packet *received_packet, char*filename){
 		if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
 		 	error("error in sending message");
 	}
-	else{
 
-	}
 }
 /*
 Get all neighbors index.
@@ -466,8 +504,9 @@ Periodically send up date info, using in a separated thread.
 */
 void period_update(){
 	while(1){
+
 		table_lock.lock();
-		check_expire(r);
+		//check_expire(r);
 		send_cm(r);
 		table_lock.unlock();
 		printf("%s\n", "I'm sending update");
@@ -521,6 +560,7 @@ int main(int argc, char *argv[])
 		int recvlen = recvfrom(r.socket, received_packet, sizeof(Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
 		if (recvlen > 0)
 		{
+			//check_expire(r);
 			if (received_packet->type == CONTROL){
 				printf("I received control packet from %c\n", received_packet->outgoing_id);
 				process_cm(r, received_packet,&remote_addr, filename);
