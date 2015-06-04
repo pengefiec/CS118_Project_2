@@ -316,13 +316,14 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 		if(states[i]&&!received_packet->dv[i].state){
 			r.table[i].cost=9999;
 			r.table[i].state=false;
+			states[i]=false;
 			updated=true;
 		}
 		
 		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
 		{	
 			int x=distance(ports, find(ports, ports + 6, r.table[i].destination_port));
-			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x <= index)
+			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x <= index && r.table[i].state)
 			{
 
 			} 
@@ -508,13 +509,14 @@ void check_expire(){
 	
 	for(unordered_map<int, time_t>::iterator it = neig_update_time.begin(); it!= neig_update_time.end(); ++it){
 		double elapse=difftime(now, it->second);
-		if(elapse>=15.0){
+		int x=distance(ports, find(ports, ports + 6, it->first));
+		if(elapse>=15.0&&states[x]){
 			// Get old DV
 			printf("this is the neighbors ports %d\n", it->first);
 			printf("this is the time elapse %f\n", elapse);
 			routing_table old;
 			
-			int x=distance(ports, find(ports, ports + 6, it->first));
+			
 			if(r.table[x].cost<9999){
 				for(int i=0;i<6; i++){
 					old[i] = r.table[i];
