@@ -80,6 +80,34 @@ void print_routing_table(const Router &r){
 	printf("%c, %i, %i\n", r.table[5].destination, r.table[5].destination_port, r.table[5].cost);
 }
 /*
+Output routing table to a file.
+*/
+void output_routing_table(const Router &r, char id, char* filename, routing_table old){
+	
+	FILE* output = fopen(filename, "a+");
+	// Timestamp
+	time_t now;
+	struct tm *tm;
+	now = time(0);
+	tm = localtime(&now);
+
+	//Print the time stamp.
+	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+				   tm->tm_hour, tm->tm_min, tm->tm_sec);
+	fprintf(output, "Router %c received DV update from Router %c\n", r.id, id);
+	fprintf(output, "Old routing table:\n");
+	for (int j = 0; j < 6; j++)
+		fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
+
+	// Print routing table updates to file
+	fprintf(output, "\nNew routing table:\n");
+	for (int j = 0; j < 6; j++)
+		fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
+	fprintf(output, "\n");
+	fclose(output);
+}
+/*
 Constructs a router and its socket
 */
 Router start_router(int port, char id, int index, char*filename)
@@ -101,7 +129,8 @@ Router start_router(int port, char id, int index, char*filename)
 		r.table[i].outgoing_port = port;
 		r.table[i].destination_port = -1;
 	}
-	routing_table old=r.table;
+	routing_table old;
+	copy(begin(r.table),end(r.table),begin(old));
 	printf("Router %c created with port %d\n", id, port);
 
 	// Open initial topology file
@@ -172,7 +201,7 @@ Router start_router(int port, char id, int index, char*filename)
 
 		}
 	}
-	output_routing_table(r,'I',filename, old)
+	output_routing_table(r,'I',filename, old);
 	// Print router's initial routing table given from the file
 	print_routing_table(r);
 
@@ -284,34 +313,7 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 		return updated;	
 }
 
-/*
-Output routing table to a file.
-*/
-void output_routing_table(const Router &r, char id, char* filename, routing_table old){
-	
-	FILE* output = fopen(filename, "a+");
-	// Timestamp
-	time_t now;
-	struct tm *tm;
-	now = time(0);
-	tm = localtime(&now);
 
-	//Print the time stamp.
-	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
-				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
-				   tm->tm_hour, tm->tm_min, tm->tm_sec);
-	fprintf(output, "Router %c received DV update from Router %c\n", r.id, id);
-	fprintf(output, "Old routing table:\n");
-	for (int j = 0; j < 6; j++)
-		fprintf(output, "%c, %i, %i\n", old[j].destination, old[j].destination_port, old[j].cost);
-
-	// Print routing table updates to file
-	fprintf(output, "\nNew routing table:\n");
-	for (int j = 0; j < 6; j++)
-		fprintf(output, "%c, %i, %i\n", r.table[j].destination, r.table[j].destination_port, r.table[j].cost);
-	fprintf(output, "\n");
-	fclose(output);
-}
 /*
 Output a data file send from a source router.
 */
@@ -443,6 +445,7 @@ void check_expire(Router &r){
 		double elapse=difftime(now, r.table[i].last_update_time);
 		if(elapse>15.0){
 			r.table[i].cost=9999;
+			neighbors[r.table[i].destination_port]=9999;
 			//update_routing_table(r);
 		}
 	}
@@ -481,16 +484,19 @@ int main(int argc, char *argv[])
     int index = atoi(argv[1]);
     int portno=ports[index];
    	char id=ids[index];
-	r = start_router(portno, id, index,old);
-	struct sockaddr_in remote_addr;
-	socklen_t remote_addr_len=sizeof(remote_addr);
-	time_t current=time(NULL);
 
-	//Construct update file.
+   	//Construct update file.
 	char filename[256] = "routing-output";
 	char idstring[2] = {id, '\0'};
 	strcat(filename, idstring);
 	strcat(filename, ".txt");
+	
+	r = start_router(portno, id, index,filename);
+	struct sockaddr_in remote_addr;
+	socklen_t remote_addr_len=sizeof(remote_addr);
+	time_t current=time(NULL);
+
+	
 	
 
 	printf("\nRouter Start!\n");
