@@ -82,7 +82,7 @@ void print_routing_table(const Router &r){
 /*
 Constructs a router and its socket
 */
-Router start_router(int port, char id, int index)
+Router start_router(int port, char id, int index, char*filename)
 {
 	Router r;
 	r.port = port;
@@ -101,7 +101,7 @@ Router start_router(int port, char id, int index)
 		r.table[i].outgoing_port = port;
 		r.table[i].destination_port = -1;
 	}
-
+	routing_table old=r.table;
 	printf("Router %c created with port %d\n", id, port);
 
 	// Open initial topology file
@@ -172,7 +172,7 @@ Router start_router(int port, char id, int index)
 
 		}
 	}
-
+	output_routing_table(r,'I',filename, old)
 	// Print router's initial routing table given from the file
 	print_routing_table(r);
 
@@ -481,7 +481,7 @@ int main(int argc, char *argv[])
     int index = atoi(argv[1]);
     int portno=ports[index];
    	char id=ids[index];
-	r = start_router(portno, id, index);
+	r = start_router(portno, id, index,old);
 	struct sockaddr_in remote_addr;
 	socklen_t remote_addr_len=sizeof(remote_addr);
 	time_t current=time(NULL);
