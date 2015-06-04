@@ -22,6 +22,8 @@ using namespace std;
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
 unordered_map<int, int> neighbors;
+unordered_map<int, time_t> neig_update_time;
+bool states[6];
 //ADM for administration message.
 typedef enum {CONTROL, DATA, ADMIN} packet_type;
 
@@ -32,7 +34,8 @@ struct routing_table_row
 	int cost;
 	int outgoing_port;
 	int destination_port;
-	time_t last_update_time;
+	//time_t last_update_time;
+	bool state;
 };
 
 typedef struct routing_table_row routing_table[6];
@@ -56,7 +59,7 @@ typedef struct
 
 	packet_type type;
 
-	string msg;		  // For data
+	char msg[500];		  // For data
 	routing_table dv; // For DV updates
 } Packet;
 
@@ -119,7 +122,7 @@ Router start_router(int port, char id, int index, char*filename)
 	r.port = port;
 	r.id = id;
 	r.index = index;
-
+	time_t now=time(NULL);
 	// Initialize routing table, the destions are set to 9999 and the destination port are set to -1.
 	for (int i = 0; i < 6; i++)
 	{
@@ -131,6 +134,8 @@ Router start_router(int port, char id, int index, char*filename)
 		r.table[i].neighbor = false;
 		r.table[i].outgoing_port = port;
 		r.table[i].destination_port = -1;
+		r.table[i].state=true;
+		states[i]=true;
 	}
 	routing_table old;
 	copy(begin(r.table),end(r.table),begin(old));
@@ -160,6 +165,8 @@ Router start_router(int port, char id, int index, char*filename)
 				r.table[0].cost = atoi(pch);
 				r.table[0].neighbor = true;
 				neighbors.insert(make_pair(r.table[0].destination_port, r.table[0].cost));
+				neig_update_time.insert(make_pair(r.table[0].destination_port, now));
+
 			}
 			else if (strcmp(pch, "B") == 0) {
 				pch = strtok(NULL, ",");
@@ -168,6 +175,7 @@ Router start_router(int port, char id, int index, char*filename)
 				r.table[1].cost = atoi(pch);
 				r.table[1].neighbor = true;
 				neighbors.insert(make_pair(r.table[1].destination_port, r.table[1].cost));
+				neig_update_time.insert(make_pair(r.table[1].destination_port, now));
 			}
 			else if (strcmp(pch, "C") == 0) {
 				pch = strtok(NULL, ",");
@@ -176,6 +184,7 @@ Router start_router(int port, char id, int index, char*filename)
 				r.table[2].cost = atoi(pch);
 				r.table[2].neighbor = true;
 				neighbors.insert(make_pair(r.table[2].destination_port, r.table[2].cost));
+				neig_update_time.insert(make_pair(r.table[2].destination_port, now));
 			}
 			else if (strcmp(pch, "D") == 0) {
 				pch = strtok(NULL, ",");
@@ -184,6 +193,7 @@ Router start_router(int port, char id, int index, char*filename)
 				r.table[3].cost = atoi(pch);
 				r.table[3].neighbor = true;
 				neighbors.insert(make_pair(r.table[3].destination_port, r.table[3].cost));
+				neig_update_time.insert(make_pair(r.table[3].destination_port, now));
 			}
 			else if (strcmp(pch, "E") == 0) {
 				pch = strtok(NULL, ",");
@@ -192,6 +202,7 @@ Router start_router(int port, char id, int index, char*filename)
 				r.table[4].cost = atoi(pch);
 				r.table[4].neighbor = true;
 				neighbors.insert(make_pair(r.table[4].destination_port, r.table[4].cost));
+				neig_update_time.insert(make_pair(r.table[4].destination_port, now));
 			}
 			else if (strcmp(pch, "F") == 0) {
 				pch = strtok(NULL, ",");
@@ -200,6 +211,7 @@ Router start_router(int port, char id, int index, char*filename)
 				r.table[5].cost = atoi(pch);
 				r.table[5].neighbor = true;
 				neighbors.insert(make_pair(r.table[5].destination_port, r.table[5].cost));
+				neig_update_time.insert(make_pair(r.table[5].destination_port, now));
 			}
 
 		}
@@ -252,10 +264,10 @@ Packet create_ctr(const Router& r, int i){
 	Packet p;
 	p.type = CONTROL;
 	p.outgoing_port = r.port;
-	p.destination_port = r.table[i].destination_port;
+	p.destination_port = ports[i];
 	p.outgoing_id = r.id;
 	p.index = r.index;
-	p.destination_id = r.table[i].destination;
+	p.destination_id = ids[i];
 	for (int j=0; j<6; j++){
 		p.dv[j] = r.table[j];
 	}
@@ -271,7 +283,7 @@ void send_cm(const Router& r)
 		{
 			if(r.table[i].neighbor)
 			{
-
+				printf("I'm sending cm to %d\n", r.table[i].destination_port);
 				// Create a control packet of the router's DV and send it to neighbors
 				Packet p=create_ctr(r, i);
 				//Contruct the address structure.
@@ -294,51 +306,18 @@ void send_cm(const Router& r)
 /*
 Update routing table when new dv comes.
 */
-// bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
-// 	bool updated = false;
-// 	time_t now=time(NULL);
-// 	r.table[received_packet->index].last_update_time=now;
-// 	// Iterate through each DV entry and check for cheaper cost and update
-// 	for (int i = 0; i < 6; i++)
-// 	{
-		
-// 		int index = received_packet->index;
-// 		int x=distance(ports, find(ports, ports + 6, r.table[i].outgoing_port));
-// 		int y=distance(ids, find(ids, ids + 6, index));
-// 		if (r.table[i].cost > neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
-// 		{
-// 			updated=true;
-// 			r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
-// 			r.table[i].destination_port=ntohs(remote_addr->sin_port);
-// 			print_routing_table(r);
-// 			send_cm(r);
-			
-// 		}
-// 		// else if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && ids[x] < ids[y] ){
-// 		// 	updated=true;
-// 		// 	r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
-// 		// 	r.table[i].destination_port=ntohs(remote_addr->sin_port);
-// 		// 	print_routing_table(r);
-// 		// 	send_cm(r);
-// 		// }
 
-// 	}
-// 		return updated;	
-// }
 bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
 	bool updated = false;
-	time_t now=time(NULL);
-	r.table[received_packet->index].last_update_time=now;
+	int index = received_packet->index;
 	// Iterate through each DV entry and check for cheaper cost and update
 	for (int i = 0; i < 6; i++)
 	{
 		
-		int index = received_packet->index;
 		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
 		{	
 			int x=distance(ports, find(ports, ports + 6, r.table[i].destination_port));
-			int y=distance(ids, find(ids, ids + 6, index));
-			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x < y )
+			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x <= index)
 			{
 
 			} 
@@ -346,8 +325,6 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 				updated=true;
 				r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
 				r.table[i].destination_port=ntohs(remote_addr->sin_port);
-				print_routing_table(r);
-				send_cm(r);
 			}
 			
 		}
@@ -374,14 +351,54 @@ void output_data_message(const Packet* received_packet, char* filename){
 	fprintf(output, "Outgoing port on source router: %d\n", received_packet->outgoing_port);
 	fprintf(output, "Data packet send to: %c\n", received_packet->destination_id);
 	//Print out the txet phrase.
-	fprintf(output, "Payload: %s\n", received_packet->msg.c_str());
+	fprintf(output, "Payload: %s\n", received_packet->msg);
+	fprintf(output, "\n");
+	fclose(output);
+}
+/*
+output route of packet to a file
+*/
+void output_packet_route(const Router &r, const Packet *received_packet){
+	FILE* output = fopen("route_output.txt", "a+");
+	// Timestamp
+	time_t now;
+	struct tm *tm;
+	now = time(0);
+	tm = localtime(&now);
+
+	//Print the time stamp.
+	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
+				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+				   tm->tm_hour, tm->tm_min, tm->tm_sec);
+	//Print out the header.
+	fprintf(output, "current router id is: %c the destination id is%c:  \n", r.id, received_packet->destination_id );
+	if(r.id == received_packet->destination_id){
+		fprintf(output, "This packet is successfully recevied by destination router%c\n", received_packet->destination_id);
+		fprintf(output, "Outgoing port on source router: %d\n", received_packet->outgoing_port);
+		fprintf(output, "Data packet received by %c\n", received_packet->destination_id);
+		//Print out the txet phrase.
+		fprintf(output, "Payload: %s\n", received_packet->msg);
+		//fprintf(output, "%s\n","============================================" );
+	}
 	fprintf(output, "\n");
 	fclose(output);
 }
 /*
 Process control message. Output the old routing table and new routing table into a file if changes happen.
 */
-void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
+void process_cm(Router &r, Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
+	time_t now=time(NULL);
+	if(!states[received_packet->index]){
+		states[received_packet->index]=true;
+		r.table[received_packet->index].state=true;
+		r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
+		received_packet->dv[received_packet->index].state=true;
+	}
+	
+	table_lock.lock();
+	neig_update_time[received_packet->outgoing_port]=now;
+	printf("this cm is received from %d\n", received_packet->outgoing_port);
+	table_lock.unlock();
 	// Get old DV
 	routing_table old;
 	for(int i=0;i<6; i++){
@@ -390,6 +407,8 @@ void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * 
 	// Only print to file if routing table is updated	
 	if(update_routing_table(r, received_packet, remote_addr)){
 		output_routing_table(r, received_packet->outgoing_id, filename, old);
+		print_routing_table(r);
+		send_cm(r);
 	}	
 }
 /*
@@ -401,9 +420,10 @@ void process_dm(const Router &r, const Packet *received_packet, char*filename){
 	Packet p;
 	p.type = DATA;
 	p.destination_id = received_packet->destination_id;
-	p.msg=received_packet->msg;
+
+	strcpy(p.msg,received_packet->msg);
 	//printf("%s\n", p.msg.c_str());
-	output_data_message(received_packet, filename);
+	output_packet_route(r,received_packet);
 	int x=distance(ids, find(ids, ids + 6, received_packet->destination_id));
 	if(x!=r.index&&r.table[x].cost<9999){
 		struct sockaddr_in remote_addr;
@@ -435,12 +455,13 @@ repack and resend this packet to the related neighbor, since the network is undi
 both side.
 */
 void process_admin(Router &r, const Packet *received_packet, char* filename){
+	string msg = received_packet->msg;
 	// Get old DV
 	routing_table old;
 	for(int i=0;i<6; i++){
 		old[i] = r.table[i];
 	}
-	istringstream ss(received_packet->msg);
+	istringstream ss(msg);
 	string id_s;
 	string cost_s;
 
@@ -462,7 +483,7 @@ void process_admin(Router &r, const Packet *received_packet, char* filename){
 		p.type = ADMIN;
 		p.destination_id = id;
 		string message=string(1,r.id)+','+cost_s;
-		p.msg=message;
+		strcpy(p.msg,received_packet->msg);
 		struct sockaddr_in remote_addr;
 		socklen_t remote_addr_len = sizeof(struct sockaddr_in);
 		remote_addr.sin_family = AF_INET;
@@ -477,34 +498,51 @@ void process_admin(Router &r, const Packet *received_packet, char* filename){
 /*
 Check the routing table, mark the expored record.
 */
-void check_expire(Router &r){
+void check_expire(){
 	time_t now=time(NULL);
-	for(int i=0;i<6;i++){
-		double elapse=difftime(now, r.table[i].last_update_time);
-		if(elapse>15.0){
+	
+	for(unordered_map<int, time_t>::iterator it = neig_update_time.begin(); it!= neig_update_time.end(); ++it){
+		double elapse=difftime(now, it->second);
+		if(elapse>=15.0){
 			// Get old DV
+			printf("this is the neighbors ports %d\n", it->first);
+			printf("this is the time elapse %f\n", elapse);
 			routing_table old;
-			for(int i=0;i<6; i++){
-				old[i] = r.table[i];
+			
+			int x=distance(ports, find(ports, ports + 6, it->first));
+			if(r.table[x].cost<9999){
+				for(int i=0;i<6; i++){
+					old[i] = r.table[i];
+				}
+				table_lock.lock();
+				r.table[x].cost=9999;
+				//neighbors[it->first]=9999;
+				r.table[x].state=false;
+				states[x]=false;
+				print_routing_table(r);
+				char filename[256] = "routing-output";
+				char idstring[2] = {r.id, '\0'};
+				strcat(filename, idstring);
+				strcat(filename, ".txt");
+				table_lock.unlock();
+				output_routing_table(r, 'X', filename, old);
 			}
-			r.table[i].cost=9999;
-			neighbors[r.table[i].destination_port]=9999;
-			//print_routing_table(r);
-			// char filename[256] = "routing-output";
-			// char idstring[2] = {r.id, '\0'};
-			// strcat(filename, idstring);
-			// strcat(filename, ".txt");
-			// output_routing_table(r, 'X', filename, old);
+			
 		}
 	}
 	
+}
+void detect(){
+	while(1){
+		check_expire();
+		std::this_thread::sleep_for (std::chrono::seconds(1));
+	}
 }
 /*
 Periodically send up date info, using in a separated thread.
 */
 void period_update(){
 	while(1){
-
 		table_lock.lock();
 		//check_expire(r);
 		send_cm(r);
@@ -538,6 +576,7 @@ int main(int argc, char *argv[])
 	strcat(filename, ".txt");
 
 	r = start_router(portno, id, index,filename);
+	send_cm(r);
 	struct sockaddr_in remote_addr;
 	socklen_t remote_addr_len=sizeof(remote_addr);
 	time_t current=time(NULL);
@@ -553,26 +592,34 @@ int main(int argc, char *argv[])
 	// Start routers to send and receive DVs
 	send_cm(r);
 
-	std::thread t (period_update);
-	t.detach();
+	thread t1 (period_update);
+	thread t2 (detect);
+	t1.detach();
+	t2.detach();
 	printf("%s%s\n", "this is the current value", ctime(&current));
 	while(1) {
+		
 		int recvlen = recvfrom(r.socket, received_packet, sizeof(Packet), 0, (struct sockaddr *) &remote_addr, &remote_addr_len);
 		if (recvlen > 0)
 		{
 			//check_expire(r);
 			if (received_packet->type == CONTROL){
+				time_t now=time(NULL);
+				table_lock.lock();
+				neig_update_time[received_packet->outgoing_port]=now;
+				printf("this cm is received from %d\n", received_packet->outgoing_port);
+				table_lock.unlock();
 				printf("I received control packet from %c\n", received_packet->outgoing_id);
 				process_cm(r, received_packet,&remote_addr, filename);
 			}
 			else if(received_packet->type==DATA){
-				printf("%s%s\n", "I received data packet, the payload is: ",received_packet->msg.c_str());
+				printf("%s%s\n", "I received data packet, the payload is: ",received_packet->msg);
 				
 				process_dm(r, received_packet,filename);
 				
 			}
 			else if(received_packet->type==ADMIN){
-				printf("%s%s\n", "I received a admin packet, the payload is: ",received_packet->msg.c_str());
+				printf("%s%s\n", "I received a admin packet, the payload is: ",received_packet->msg);
 				process_admin(r, received_packet, filename);
 			}
 			else{
