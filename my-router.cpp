@@ -313,6 +313,11 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 	// Iterate through each DV entry and check for cheaper cost and update
 	for (int i = 0; i < 6; i++)
 	{
+		if(states[i]&&!received_packet->dv[i].state){
+			r.table[i].cost=9999;
+			r.table[i].state=false;
+			updated=true;
+		}
 		
 		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0)
 		{	
@@ -388,12 +393,12 @@ Process control message. Output the old routing table and new routing table into
 */
 void process_cm(Router &r, Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
 	time_t now=time(NULL);
-	if(!states[received_packet->index]){
-		states[received_packet->index]=true;
-		r.table[received_packet->index].state=true;
-		r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
-		received_packet->dv[received_packet->index].state=true;
-	}
+	// if(!states[received_packet->index]){
+	// 	states[received_packet->index]=true;
+	// 	r.table[received_packet->index].state=true;
+	// 	r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
+	// 	received_packet->dv[received_packet->index].state=true;
+	// }
 	
 	table_lock.lock();
 	neig_update_time[received_packet->outgoing_port]=now;
