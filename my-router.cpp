@@ -17,7 +17,7 @@
 #include <string>
 #include <sstream> 
 #include <mutex>
-
+#include <iostream>
 using namespace std;
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
 const char ids[6] = {'A', 'B', 'C', 'D', 'E', 'F'};
@@ -322,15 +322,14 @@ void output_data_message(const Packet* received_packet, char* filename){
 	struct tm *tm;
 	now = time(0);
 	tm = localtime(&now);
-
 	//Print the time stamp.
 	fprintf(output, "%04d-%02d-%02d %02d:%02d:%02d\n",
 				 	tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
 				   tm->tm_hour, tm->tm_min, tm->tm_sec);
 	//Print out the header.
-	fprintf(output, "Mesage type%s\n", "DATA");
-	fprintf(output, "Outgoing port on source router: %s\n", received_packet->outgoing_port);
-	fprintf(output, "Data packet send from %c\n", received_packet->destination_id);
+	fprintf(output, "Mesage type: %s\n", "DATA");
+	fprintf(output, "Outgoing port on source router: %d\n", received_packet->outgoing_port);
+	fprintf(output, "Data packet send to: %c\n", received_packet->destination_id);
 	//Print out the txet phrase.
 	fprintf(output, "Payload: %s\n", received_packet->msg.c_str());
 	fprintf(output, "\n");
@@ -353,7 +352,7 @@ void process_cm(Router &r, const Packet *received_packet,  struct sockaddr_in * 
 /*
 Process data message. Relay to another router.
 */
-void process_dm(const Router &r, const Packet *received_packet){
+void process_dm(const Router &r, const Packet *received_packet, char*filename){
 
 	//Must repack it, don't know why.
 	Packet p;
@@ -361,6 +360,7 @@ void process_dm(const Router &r, const Packet *received_packet){
 	p.destination_id = received_packet->destination_id;
 	p.msg=received_packet->msg;
 	//printf("%s\n", p.msg.c_str());
+	output_data_message(received_packet, filename);
 	int x=distance(ids, find(ids, ids + 6, received_packet->destination_id));
 	if(x!=r.index&&r.table[x].cost<9999){
 		struct sockaddr_in remote_addr;
@@ -368,7 +368,8 @@ void process_dm(const Router &r, const Packet *received_packet){
 		remote_addr.sin_family = AF_INET;
 		remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 		remote_addr.sin_port = htons(ports[x]);
-		printf("%s\n", "I'm sending data packet");
+
+		
 		if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
 		 	error("error in sending message");
 	}
@@ -512,7 +513,8 @@ int main(int argc, char *argv[])
 			}
 			else if(received_packet->type==DATA){
 				printf("%s%s\n", "I received data packet, the payload is: ",received_packet->msg.c_str());
-				process_dm(r, received_packet);
+				
+				process_dm(r, received_packet,filename);
 				
 			}
 			else if(received_packet->type==ADMIN){

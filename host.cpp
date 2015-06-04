@@ -10,6 +10,7 @@
 #include <signal.h>	/* signal name macros, and the kill() prototype */
 #include <time.h>
 #include <string>
+#include <iostream>
 using namespace std;
 const int ports[6] = {10000, 10001, 10002, 10003, 10004, 10005};
 const char ids[6] = {'A', 'B', 'C', 'D', 'F', 'E'};
@@ -158,18 +159,22 @@ int main(int argc, char *argv[])
 		if(argc != 4){
 			error("Please provide the outgoing_router and destination_router");
 		}
-		char temp[500]; 
-		scanf("%s", &temp);
-		string msg = temp;
+		// char temp[500]; 
+		// scanf("%s", &temp);
+		// string msg = temp;
+		string msg;
+		getline(cin, msg);
 		make_data_packet(argv[2][0], argv[3][0],msg, filename);
 	}
 	if(strcmp(type, "1") == 0){
 		if(argc != 3){
 			error("Please provide the target destination_router");
 		}
-		char temp[100]; 
-		scanf("%s", &temp);
-		string msg = temp;
+		// char temp[100]; 
+		// scanf("%s", &temp);
+		// string msg = temp;
+		string msg;
+		getline(cin, msg);
 		make_admin_packet(argv[2][0], msg);
 	}
 	return 0;
