@@ -71,6 +71,7 @@ void error(char* msg)
 }
 Router r;
 mutex table_lock;
+mutex time_lock;
 /*
 Print the routing table.
 */
@@ -110,7 +111,6 @@ void output_routing_table(const Router &r, char id, char* filename, routing_tabl
 	fprintf(output, "\n");
 	fclose(output);
 }
-
 
 
 /*
@@ -293,15 +293,25 @@ void send_cm(const Router& r)
 				remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 				remote_addr.sin_port = htons(p.destination_port);
 				//Poison reverse.
-				vector<int> via_here=get_via_here(r, i);
-				for (vector<int>::iterator it = via_here.begin() ; it != via_here.end(); ++it){
-					int x=distance(ports, find(ports, ports + 6, *it));
-					p.dv[x].cost=9999;
-				}
+				// vector<int> via_here=get_via_here(r, i);
+				// for (vector<int>::iterator it = via_here.begin() ; it != via_here.end(); ++it){
+				// 	int x=distance(ports, find(ports, ports + 6, *it));
+				// 	p.dv[x].cost=9999;
+				// }
 				if (sendto(r.socket, &p, sizeof(p), 0, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0)
 				 	error("error in sending message");
 			}
 		}		
+}
+/*
+Get all neighbors index.
+*/
+vector<int> get_all_neighbor_index(Router& r){
+	vector<int> all_neighbor;
+	for(int i=0;i<6;i++){
+		if(r.table[i].neighbor)
+			all_neighbor.push_back(distance(ports, find(ports, ports+6, r.table[i].destination_port)));
+	}
 }
 /*
 Update routing table when new dv comes.
@@ -314,14 +324,17 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 	for (int i = 0; i < 6; i++)
 	{
 		if(states[i]&&!received_packet->dv[i].state){
-			r.table[i].cost=9999;
-			r.table[i].state=false;
-			states[i]=false;
-			updated=true;
+			if(received_packet->outgoing_port==r.table[i].destination_port){
+				r.table[i].cost=9999;
+				r.table[i].state=false;
+				states[i]=false;
+				updated=true;
+			}
+			
 		}
 		
 		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0  && r.table[i].state)
-			
+
 		{	
 			int x=distance(ports, find(ports, ports + 6, r.table[i].destination_port));
 			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x <= index)
@@ -395,17 +408,16 @@ Process control message. Output the old routing table and new routing table into
 */
 void process_cm(Router &r, Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
 	time_t now=time(NULL);
-	// if(!states[received_packet->index]){
-	// 	states[received_packet->index]=true;
-	// 	r.table[received_packet->index].state=true;
-	// 	r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
-	// 	received_packet->dv[received_packet->index].state=true;
-	// }
-	
-	table_lock.lock();
 	neig_update_time[received_packet->outgoing_port]=now;
+	if(r.table[received_packet->index].neighbor){
+		states[received_packet->index]=true;
+		r.table[received_packet->index].state=true;
+		r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
+		//received_packet->dv[received_packet->index].state=true;
+	}
+	
+	
 	printf("this cm is received from %d\n", received_packet->outgoing_port);
-	table_lock.unlock();
 	// Get old DV
 	routing_table old;
 	for(int i=0;i<6; i++){
@@ -446,15 +458,17 @@ void process_dm(const Router &r, const Packet *received_packet, char*filename){
 
 }
 /*
-Get all neighbors index.
-*/
-vector<int> get_all_neighbor_index(Router& r){
-	vector<int> all_neighbor;
-	for(int i=0;i<6;i++){
-		if(r.table[i].neighbor)
-			all_neighbor.push_back(distance(ports, find(ports, ports+6, r.table[i].destination_port)));
-	}
-}
+// For a to be shut down node, check the dv of the received packet to see if the sender's neighbor.
+// */
+// bool is_neighbor(Packet* received_packet, index){
+// 	vector<int> all_neighbor;
+// 	for(int i=0;i<6;i++){
+// 		if(received_packet.dv[i].neighbor)
+// 			if(distance(ports, find(ports, ports+6, r.table[i].destination_port))==index){
+// 				return true;
+// 			}
+// 	}
+// }
 
 /*
 Process admin message. Output the old routing table and new routing table into a file if changes happen,
@@ -509,7 +523,9 @@ void check_expire(){
 	time_t now=time(NULL);
 	
 	for(unordered_map<int, time_t>::iterator it = neig_update_time.begin(); it!= neig_update_time.end(); ++it){
+		time_lock.lock();
 		double elapse=difftime(now, it->second);
+		time_lock.lock();
 		int x=distance(ports, find(ports, ports + 6, it->first));
 		if(elapse>=15.0&&states[x]){
 			// Get old DV
@@ -555,7 +571,7 @@ void period_update(){
 		//check_expire(r);
 		send_cm(r);
 		table_lock.unlock();
-		printf("%s\n", "I'm sending update");
+		//printf("%s\n", "I'm sending update");
 		std::this_thread::sleep_for (std::chrono::seconds(5));
 	}
 }
