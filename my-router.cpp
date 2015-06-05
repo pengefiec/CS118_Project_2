@@ -317,9 +317,10 @@ vector<int> get_all_neighbor_index(Router& r){
 Update routing table when new dv comes.
 */
 
-bool update_routing_table(Router &r, const Packet *received_packet, struct sockaddr_in * remote_addr){
+bool update_routing_table(Router &r, const Packet *received_packet){
 	bool updated = false;
 	int index = received_packet->index;
+	
 	// Iterate through each DV entry and check for cheaper cost and update
 	for (int i = 0; i < 6; i++)
 	{
@@ -330,26 +331,62 @@ bool update_routing_table(Router &r, const Packet *received_packet, struct socka
 				states[i]=false;
 				updated=true;
 			}
-			
 		}
+		// if(i==2&&index==2)
+		// 	printf("the reason is %d\n", (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost >= 0  && r.table[i].state));
 		
-		if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost > 0  && r.table[i].state)
-
+		// if(i==2&&index==2)
+		// 		printf("%s and the cost is %d, link length is %d, second half cost is %d, received packet port is %d to the %ds router \n", "F reached here", r.table[i].cost, neighbors[ports[index]], received_packet->dv[i].cost, ports[index], i);
+	
+	
+		else if (r.table[i].cost >= neighbors[ports[index]] + received_packet->dv[i].cost&& received_packet->dv[i].cost >=0  && r.table[i].state)
+			
 		{	
+			if(i==2&&index==2)
+				//printf("%s and the cost is %d, link length is %d, second half cost is %d, received packet port is %d to the %ds router \n", "F reached here", r.table[i].cost, neighbors[ports[index]], received_packet->dv[i].cost, ports[index], i);
+				//printf("%s inn the else and the cost is %d, link length is %d, second half cost is %d, received packet port is %d to the %ds router \n", "F reached here", r.table[i].cost, neighbors[ports[index]], received_packet->dv[i].cost, ports[index], i);
 			int x=distance(ports, find(ports, ports + 6, r.table[i].destination_port));
-			if(r.table[i].cost == neighbors[ports[index]] + received_packet->dv[i].cost && x <= index)
+			if(r.table[i].cost == (neighbors[ports[index]] + received_packet->dv[i].cost) && x <= index)
 			{
-
+				// if(i==2&&index==2)
+				// 	printf("in the Impossible place %s and the cost is %d, link length is %d, second half cost is %d, received packet port is %d to the %ds router \n", "F reached here", r.table[i].cost, neighbors[ports[index]], received_packet->dv[i].cost, ports[index], i);
+				// printf("Impossible place\n");
 			} 
 			else{
+				if(i==2&&index==2)
+			//printf("in the else place%s and the cost is %d, link length is %d, second half cost is %d, received packet port is %d to the %ds router \n", "F reached here", r.table[i].cost, neighbors[ports[index]], received_packet->dv[i].cost, ports[index], i);
+	
 				updated=true;
 				r.table[i].cost = neighbors[ports[index]] + received_packet->dv[i].cost;
-				r.table[i].destination_port=ntohs(remote_addr->sin_port);
+				r.table[i].destination_port=received_packet->outgoing_port;
 			}
-			
 		}
 	}
+		//printf("updated? %d and the port is %d\n", updated, received_packet->outgoing_port);
 		return updated;	
+}
+/*
+Update the table using traditional bellman ford
+*/
+bool light_update(Router &r){
+	bool updated=false;
+	for(int i=0;i<6;i++){
+		for(int j=0;j<sizeof(r.table);j++){
+			int index=distance(ids, find(ids, ids+6, r.table[j].destination));
+			if (r.table[j].cost>=neighbors[ports[j]]+r.table[index].cost&& r.table[j].state){
+				if(r.table[j].cost==neighbors[ports[j]]+r.table[index].cost&&j<=index){
+					
+				}
+				else{
+					updated=true;
+					r.table[j].cost=neighbors[ports[j]]+r.table[index].cost;
+					r.table[j].destination_port=ports[j];
+				}
+			}
+		}
+		
+	}
+	return updated;
 }
 /*
 Output a data file send from a source router.
@@ -375,6 +412,7 @@ void output_data_message(const Packet* received_packet, char* filename){
 	fprintf(output, "\n");
 	fclose(output);
 }
+
 /*
 output route of packet to a file
 */
@@ -396,35 +434,43 @@ void output_packet_route(const Router &r, const Packet *received_packet){
 		fprintf(output, "This packet is successfully recevied by destination router%c\n", received_packet->destination_id);
 		fprintf(output, "Outgoing port on source router: %d\n", received_packet->outgoing_port);
 		fprintf(output, "Data packet received by %c\n", received_packet->destination_id);
-		//Print out the txet phrase.
 		fprintf(output, "Payload: %s\n", received_packet->msg);
-		//fprintf(output, "%s\n","============================================" );
 	}
 	fprintf(output, "\n");
 	fclose(output);
 }
+
 /*
 Process control message. Output the old routing table and new routing table into a file if changes happen.
 */
 void process_cm(Router &r, Packet *received_packet,  struct sockaddr_in * remote_addr, char* filename){
-	time_t now=time(NULL);
-	neig_update_time[received_packet->outgoing_port]=now;
-	if(r.table[received_packet->index].neighbor){
-		states[received_packet->index]=true;
-		r.table[received_packet->index].state=true;
-		r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
-		//received_packet->dv[received_packet->index].state=true;
-	}
-	
-	
-	printf("this cm is received from %d\n", received_packet->outgoing_port);
-	// Get old DV
 	routing_table old;
 	for(int i=0;i<6; i++){
 		old[i] = r.table[i];
 	}
+	time_t now=time(NULL);
+	neig_update_time[received_packet->outgoing_port]=now;
+	// printf("Router C now has state value %d\n", states[2]);
+	if(!states[received_packet->index]){
+		states[received_packet->index]=true;
+		r.table[received_packet->index].state=true;
+		//r.table[received_packet->index].cost=received_packet->dv[r.index].cost;
+		neighbors[received_packet->outgoing_port]=received_packet->dv[r.index].cost;
+	
+		//received_packet->dv[received_packet->index].state=true;
+		output_routing_table(r, 'P', filename, old);
+		printf("%d is changes its state info\n", received_packet->outgoing_port);
+	}
+	// for(int i=0; i<sizeof(received_packet->dv)&&i!=received_packet->index;i++){
+	// 	if(!states[i]){
+	// 		states[i]=true;
+	// 		r.table[i].state=true;
+	// 	}
+		
+	// }
+	
 	// Only print to file if routing table is updated	
-	if(update_routing_table(r, received_packet, remote_addr)){
+	if(update_routing_table(r, received_packet)){
 		output_routing_table(r, received_packet->outgoing_id, filename, old);
 		print_routing_table(r);
 		send_cm(r);
@@ -498,7 +544,7 @@ void process_admin(Router &r, const Packet *received_packet, char* filename){
 	 	r.table[x].cost=new_cost;
 	 	output_routing_table(r, 'H', filename, old);
 	 }
-	 printf("outgoing port is %dr.port is %d", received_packet->outgoing_port, r.port);
+	 printf("outgoing port is %d r.port is %d", received_packet->outgoing_port, r.port);
 	if(received_packet->outgoing_port==r.port){
 		Packet p;
 		p.type = ADMIN;
@@ -525,12 +571,13 @@ void check_expire(){
 	for(unordered_map<int, time_t>::iterator it = neig_update_time.begin(); it!= neig_update_time.end(); ++it){
 		time_lock.lock();
 		double elapse=difftime(now, it->second);
-		time_lock.lock();
+		time_lock.unlock();
 		int x=distance(ports, find(ports, ports + 6, it->first));
 		if(elapse>=15.0&&states[x]){
 			// Get old DV
-			printf("this is the neighbors ports %d\n", it->first);
-			printf("this is the time elapse %f\n", elapse);
+			//printf("Neighbor port of %c %d expired \n", r.id, it->first);
+			printf("Neighbor%d has expired", it->first);
+			printf("This is the time elapse %f\n", elapse);
 			routing_table old;
 			
 			
@@ -540,9 +587,10 @@ void check_expire(){
 				}
 				table_lock.lock();
 				r.table[x].cost=9999;
-				//neighbors[it->first]=9999;
+				neighbors[it->first]=9999;
 				r.table[x].state=false;
 				states[x]=false;
+				//printf("This is the state value of C in the ck function %d\n", states[2]);
 				print_routing_table(r);
 				char filename[256] = "routing-output";
 				char idstring[2] = {r.id, '\0'};
@@ -628,12 +676,15 @@ int main(int argc, char *argv[])
 		{
 			//check_expire(r);
 			if (received_packet->type == CONTROL){
-				time_t now=time(NULL);
-				table_lock.lock();
-				neig_update_time[received_packet->outgoing_port]=now;
+				// time_t now=time(NULL);
+				// table_lock.lock();
+				// neig_update_time[received_packet->outgoing_port]=now;
 				printf("this cm is received from %d\n", received_packet->outgoing_port);
-				table_lock.unlock();
-				printf("I received control packet from %c\n", received_packet->outgoing_id);
+				// if(received_packet->outgoing_port==10002){
+				// 	printf("%d is the neighbor F's distance to C: \n", received_packet->dv[3].cost);
+				// }
+				//table_lock.unlock();
+				//printf("I received control packet from %c\n", received_packet->outgoing_id);
 				process_cm(r, received_packet,&remote_addr, filename);
 			}
 			else if(received_packet->type==DATA){
